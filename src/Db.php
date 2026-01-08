@@ -8,6 +8,8 @@ use think\facade\Db as ThinkDb;
 /**
  * 数据库操作类
  *
+ * 管理定时任务、日志和锁的数据库操作，支持按月分表存储日志
+ *
  * @phpstan-type Task array{
  *     id: int,
  *     title: string,
@@ -41,41 +43,43 @@ use think\facade\Db as ThinkDb;
  *     create_time: int,
  *     update_time: int
  * }
+ *
+ * @package bingher\crontab
  */
 class Db
 {
     /**
      * 数据库配置
-     * @var array
+     * @var array<string, mixed>
      */
     private $dbConfig;
 
     /**
-     * 定时任务表
+     * 定时任务表名
      * @var string
      */
     private $taskTable = 'crontab_task';
 
     /**
-     * 定时任务日志表
+     * 定时任务日志表名（前缀）
      * @var string
      */
     private $taskLogTable = 'crontab_task_log';
 
     /**
-     * 定时任务锁表
+     * 定时任务锁表名
      * @var string
      */
     private $taskLockTable = 'crontab_task_lock';
 
     /**
-     * 定时任务日志表后缀 按月分表
+     * 定时任务日志表后缀（按月分表）
      * @var string|null
      */
     private $taskLogTableSuffix;
 
     /**
-     * 当前定时任务日志表
+     * 当前定时任务日志完整表名
      * @var string|null
      */
     private $currentTaskLogTable;
@@ -88,6 +92,8 @@ class Db
 
     /**
      * 构造函数
+     *
+     * @param array<string, mixed> $config 数据库配置（可选，覆盖默认配置）
      */
     public function __construct($config = [])
     {
@@ -157,6 +163,8 @@ class Db
      */
     public function insertTask(array $data)
     {
+        $data['create_time'] = time();
+        $data['update_time'] = time();
         return $this->db->table($this->taskTable)
             ->insertGetId($data);
     }
@@ -169,6 +177,7 @@ class Db
      */
     public function updateTask($id, array $data)
     {
+        $data['update_time'] = time();
         return $this->db->table($this->taskTable)
             ->where('id', '=', $id)
             ->update($data);
@@ -187,8 +196,9 @@ class Db
     }
 
     /**
-     * 任务是否启用
-     * @param int $status
+     * 检测任务是否启用
+     *
+     * @param int $status 任务状态值
      * @return bool
      */
     public function isTaskEnabled($status)
@@ -255,9 +265,10 @@ class Db
 
     /**
      * 插入任务锁数据
-     * @param int $taskId
-     * @param int $isLock
-     * @return int
+     *
+     * @param int $taskId 任务 ID
+     * @param int $isLock 是否锁定（0:否, 1:是）
+     * @return int 新增记录 ID
      */
     public function insertTaskLock($taskId, $isLock = 0)
     {
@@ -273,8 +284,10 @@ class Db
 
     /**
      * 更新任务锁信息
-     * @param int $taskId
-     * @param array $data
+     *
+     * @param int $taskId 任务 ID
+     * @param array $data 更新数据
+     * @return int 影响行数
      */
     public function updateTaskLock($taskId, array $data)
     {
@@ -284,9 +297,10 @@ class Db
     }
 
     /**
-     * 加锁
-     * @param int $taskId
-     * @return bool
+     * 任务加锁
+     *
+     * @param int $taskId 任务 ID
+     * @return int 影响行数
      */
     public function taskLock($taskId)
     {
@@ -294,9 +308,10 @@ class Db
     }
 
     /**
-     * 解锁
-     * @param int $taskId
-     * @return bool
+     * 任务解锁
+     *
+     * @param int $taskId 任务 ID
+     * @return int 影响行数
      */
     public function taskUnlock($taskId)
     {
@@ -304,8 +319,9 @@ class Db
     }
 
     /**
-     * 重置锁
-     * @return int
+     * 重置所有任务锁
+     *
+     * @return int 影响行数
      */
     private function taskLockReset()
     {
@@ -314,8 +330,9 @@ class Db
     }
 
     /**
-     * 任务是否加锁
-     * @param int $isLock
+     * 检测任务是否已加锁
+     *
+     * @param int $isLock 锁状态值
      * @return bool
      */
     public function isTaskLocked($isLock)
@@ -324,9 +341,13 @@ class Db
     }
 
     /**
-     * 检查任务锁
-     * @param int $taskId
-     * @return bool
+     * 检查并处理任务锁
+     *
+     * 如果任务锁不存在则创建，返回 false
+     * 如果存在则返回当前锁定状态
+     *
+     * @param int $taskId 任务 ID
+     * @return bool 是否已锁定
      */
     public function checkTaskLock($taskId)
     {
@@ -340,7 +361,11 @@ class Db
     }
 
     /**
-     * 检测表是否存在
+     * 检查并初始化任务相关表
+     *
+     * 检查任务表、日志表和锁表是否存在，不存在则创建
+     *
+     * @return void
      */
     public function checkTaskTables()
     {
@@ -360,7 +385,11 @@ class Db
     }
 
     /**
-     * 检测执行日志分表
+     * 检查并创建执行日志分表
+     *
+     * 按月分表存储日志，每月创建新表
+     *
+     * @return void
      */
     public function checkTaskLogTable()
     {
@@ -375,8 +404,9 @@ class Db
     }
 
     /**
-     * 获取数据库表名
-     * @return list<string>
+     * 获取数据库所有表名
+     *
+     * @return list<string> 表名列表
      */
     public function getDbTables()
     {
@@ -385,8 +415,9 @@ class Db
     }
 
     /**
-     * 数据表是否存在
-     * @param string $tableName
+     * 检查数据表是否存在
+     *
+     * @param string $tableName 表名
      * @return bool
      */
     public function isTableExist($tableName)
@@ -396,7 +427,9 @@ class Db
     }
 
     /**
-     * 创建定时器任务表
+     * 创建定时任务表
+     *
+     * @return bool
      */
     private function createTaskTable()
     {
@@ -421,7 +454,9 @@ SQL;
     }
 
     /**
-     * 定时器任务流水表
+     * 创建定时任务执行日志表
+     *
+     * @return bool
      */
     private function createTaskLogTable()
     {
@@ -442,7 +477,9 @@ SQL;
     }
 
     /**
-     * 定时器任务锁表
+     * 创建定时任务锁表
+     *
+     * @return bool
      */
     private function createTaskLockTable()
     {

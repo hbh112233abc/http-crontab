@@ -23,6 +23,7 @@
     "require": {
         "php": ">=7.0.0",
         "ext-json": "*",
+        "ext-pdo_sqlite": "*",
         "workerman/workerman": "^4.0",
         "workerman/crontab": "^1.0",
         "topthink/framework": "^8.1",

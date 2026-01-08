@@ -7,24 +7,33 @@ use bingher\crontab\exception\RouteNotFoundException;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 
+/**
+ * 路由类
+ *
+ * 基于 FastRoute 的简单路由封装
+ *
+ * @package bingher\crontab
+ */
 class Route
 {
     /**
+     * FastRoute 路由分发器
      * @var Dispatcher
      */
     private $dispatcher;
 
     /**
-     * 路由
-     * @var array
+     * 路由列表
+     * @var list<array{method: string, route: string, handler: callable}>
      */
     private $routes = [];
 
     /**
      * 添加路由
-     * @param $httpMethod
-     * @param $route
-     * @param $handler
+     *
+     * @param string $httpMethod HTTP 方法（GET/POST/PUT/DELETE 等）
+     * @param string $route 路由路径
+     * @param callable $handler 处理函数
      * @return $this
      */
     public function addRoute($httpMethod, $route, $handler)
@@ -38,7 +47,11 @@ class Route
     }
 
     /**
-     * 注册
+     * 注册路由
+     *
+     * 将所有路由添加到 FastRoute 分发器
+     *
+     * @return void
      */
     public function register()
     {
@@ -50,10 +63,13 @@ class Route
     }
 
     /**
-     * @param $method
-     * @param $path
-     * @return array
-     * @throws
+     * 路由分发
+     *
+     * @param string $method HTTP 方法
+     * @param string $path 请求路径
+     * @return array{0: int, 1: callable, 2: array} 路由信息
+     * @throws RouteNotFoundException 路由不存在异常
+     * @throws RouteMethodNotAllowException 请求方法不允许异常
      */
     public function dispatch($method, $path)
     {
