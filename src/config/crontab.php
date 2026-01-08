@@ -13,6 +13,7 @@ return [
     'base_uri' => env('cron.crontab_base_uri', 'http://127.0.0.1:2345'),
     // 安全秘钥
     'safe_key' => env('cron.crontab_safe_key', 'Q85gb1ncuWDsZTVoAEvymrNHhaRtp73M'),
+    // 数据库配置
     'database' => [
         // 数据库类型
         'type'         => 'sqlite',
