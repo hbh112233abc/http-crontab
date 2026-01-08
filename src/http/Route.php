@@ -1,6 +1,5 @@
 <?php
-
-namespace bingher\crontab;
+namespace bingher\crontab\http;
 
 use bingher\crontab\exception\RouteMethodNotAllowException;
 use bingher\crontab\exception\RouteNotFoundException;
@@ -39,9 +38,9 @@ class Route
     public function addRoute($httpMethod, $route, $handler)
     {
         $this->routes[] = [
-            'method' => strtoupper($httpMethod),
-            'route' => $route,
-            'handler' => $handler
+            'method'  => strtoupper($httpMethod),
+            'route'   => $route,
+            'handler' => $handler,
         ];
         return $this;
     }

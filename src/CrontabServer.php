@@ -1,11 +1,10 @@
 <?php
 namespace bingher\crontab;
 
-use bingher\crontab\exception\HttpException;
+use bingher\crontab\http\HttpHandler;
+use bingher\crontab\http\HttpServer;
 use Workerman\Connection\TcpConnection;
 use Workerman\Crontab\Crontab;
-use Workerman\Protocols\Http\Request;
-use Workerman\Protocols\Http\Response;
 use Workerman\Timer;
 use Workerman\Worker;
 
@@ -16,7 +15,7 @@ use Workerman\Worker;
  *
  * @package bingher\crontab
  */
-class HttpCrontab
+class CrontabServer
 {
     /**
      * Worker 实例
@@ -28,7 +27,7 @@ class HttpCrontab
      * 进程名称
      * @var string
      */
-    private $workerName = "Workerman Http Crontab";
+    private $workerName = "Crontab Server";
 
     /**
      * 数据库操作实例
@@ -61,10 +60,22 @@ class HttpCrontab
     private $safeKey;
 
     /**
-     * 路由对象
-     * @var Route
+     * HTTP 处理器
+     * @var HttpHandler|null
      */
-    private $route;
+    private $httpHandler;
+
+    /**
+     * HTTP 控制器
+     * @var HttpServer|null
+     */
+    private $httpServer;
+
+    /**
+     * 是否启用 HTTP 服务
+     * @var bool
+     */
+    private $enableHttp = true;
 
     /**
      * 最低PHP版本要求
@@ -109,20 +120,6 @@ class HttpCrontab
     const CRONTAB_CHECK_INTERVAL = 1;
 
     /**
-     * 路由路径定义
-     */
-    const INDEX_PATH  = '/crontab/index';  // 任务列表
-    const ADD_PATH    = '/crontab/add';    // 添加任务
-    const EDIT_PATH   = '/crontab/edit';   // 编辑任务
-    const READ_PATH   = '/crontab/read';   // 读取任务
-    const MODIFY_PATH = '/crontab/modify'; // 修改任务属性
-    const RELOAD_PATH = '/crontab/reload'; // 重启任务
-    const DELETE_PATH = '/crontab/delete'; // 删除任务
-    const FLOW_PATH   = '/crontab/flow';   // 执行日志
-    const POOL_PATH   = '/crontab/pool';   // 任务池
-    const PING_PATH   = '/crontab/ping';   // 心跳检测
-
-    /**
      * 构造函数
      *
      * @param string $socketName 监听地址，格式为 <协议>://<监听地址>
@@ -130,11 +127,13 @@ class HttpCrontab
      *                            不填写表示不监听任何端口
      * @param array $contextOption socket 上下文选项
      *                            参考 http://php.net/manual/zh/context.socket.php
+     * @param bool $enableHttp 是否启用 HTTP 服务，默认为 true
+     *                          设置为 false 时仅运行 Crontab 定时任务，不提供 HTTP 接口
      */
-    public function __construct($socketName = '', array $contextOption = [])
+    public function __construct($socketName = '', array $contextOption = [], $enableHttp = true)
     {
         $this->checkEnv();
-        $this->initRoute();
+        $this->enableHttp = $enableHttp;
         $this->initWorker($socketName, $contextOption);
     }
 
@@ -192,34 +191,6 @@ class HttpCrontab
     }
 
     /**
-     * 初始化路由
-     */
-    private function initRoute()
-    {
-        $this->route = new Route();
-        $this->registerRoute();
-    }
-
-    /**
-     * 注册路由
-     */
-    private function registerRoute()
-    {
-        $this->route
-            ->addRoute('GET', self::INDEX_PATH, [$this, 'crontabIndex'])
-            ->addRoute('POST', self::ADD_PATH, [$this, 'crontabAdd'])
-            ->addRoute('GET', self::READ_PATH, [$this, 'crontabRead'])
-            ->addRoute('POST', self::EDIT_PATH, [$this, 'crontabEdit'])
-            ->addRoute('POST', self::MODIFY_PATH, [$this, 'crontabModify'])
-            ->addRoute('POST', self::DELETE_PATH, [$this, 'crontabDelete'])
-            ->addRoute('POST', self::RELOAD_PATH, [$this, 'crontabReload'])
-            ->addRoute('GET', self::FLOW_PATH, [$this, 'crontabFlow'])
-            ->addRoute('GET', self::POOL_PATH, [$this, 'crontabPool'])
-            ->addRoute('GET', self::PING_PATH, [$this, 'crontabPing'])
-            ->register();
-    }
-
-    /**
      * 初始化 Worker
      *
      * @param string $socketName 监听地址
@@ -227,7 +198,13 @@ class HttpCrontab
      */
     private function initWorker($socketName = '', $contextOption = [])
     {
-        $socketName         = $socketName ?: self::DEFAULT_SOCKET_NAME;
+        // 如果不启用 HTTP 服务，则不监听任何端口
+        if (! $this->enableHttp) {
+            $socketName = '';
+        } else {
+            $socketName = $socketName ?: self::DEFAULT_SOCKET_NAME;
+        }
+
         $this->worker       = new Worker($socketName, $contextOption);
         $this->worker->name = $this->workerName;
 
@@ -247,12 +224,33 @@ class HttpCrontab
         $this->worker->onWorkerStart  = [$this, 'onWorkerStart'];
         $this->worker->onWorkerReload = [$this, 'onWorkerReload'];
         $this->worker->onWorkerStop   = [$this, 'onWorkerStop'];
-        $this->worker->onConnect      = [$this, 'onConnect'];
-        $this->worker->onMessage      = [$this, 'onMessage'];
-        $this->worker->onClose        = [$this, 'onClose'];
-        $this->worker->onBufferFull   = [$this, 'onBufferFull'];
-        $this->worker->onBufferDrain  = [$this, 'onBufferDrain'];
-        $this->worker->onError        = [$this, 'onError'];
+
+        // 仅在启用 HTTP 服务时注册网络相关回调
+        if ($this->enableHttp) {
+            $this->worker->onConnect     = [$this, 'onConnect'];
+            $this->worker->onMessage     = [$this, 'onMessage'];
+            $this->worker->onClose       = [$this, 'onClose'];
+            $this->worker->onBufferFull  = [$this, 'onBufferFull'];
+            $this->worker->onBufferDrain = [$this, 'onBufferDrain'];
+            $this->worker->onError       = [$this, 'onError'];
+        }
+    }
+
+    /**
+     * 初始化 HTTP 控制器和处理器
+     */
+    private function initHttpComponents()
+    {
+        $this->httpServer = new HttpServer(
+            $this->db,
+            $this->crontabPool,
+            [$this, 'crontabDestroy'],
+            [$this, 'crontabRun'],
+            $this->debug,
+            $this->safeKey
+        );
+
+        $this->httpHandler = new HttpHandler($this->httpServer);
     }
 
     /**
@@ -403,6 +401,12 @@ class HttpCrontab
     {
         $this->db = new Db();
         $this->db->checkTaskTables();
+
+        // 初始化 HTTP 组件
+        if ($this->enableHttp) {
+            $this->initHttpComponents();
+        }
+
         $this->crontabInit();
         // 定时检查日志分表
         Timer::add(self::CRONTAB_CHECK_INTERVAL, [$this->db, 'checkTaskLogTable']);
@@ -443,7 +447,7 @@ class HttpCrontab
      */
     public function onConnect($connection)
     {
-
+        $this->httpHandler->onConnect($connection);
     }
 
     /**
@@ -458,7 +462,7 @@ class HttpCrontab
      */
     public function onClose($connection)
     {
-
+        $this->httpHandler->onClose($connection);
     }
 
     /**
@@ -467,23 +471,11 @@ class HttpCrontab
      * 当客户端通过连接发来数据时(Workerman 收到数据时)触发
      *
      * @param TcpConnection $connection TCP 连接实例
-     * @param Request $request HTTP 请求对象
+     * @param mixed $request HTTP 请求对象
      */
     public function onMessage($connection, $request)
     {
-        if ($request instanceof Request) {
-            // 安全密钥验证
-            if ($this->safeKey !== null && $request->header('key') !== $this->safeKey) {
-                $connection->send($this->response('', 'Connection Not Allowed', 403));
-            } else {
-                try {
-                    $routeInfo = $this->route->dispatch($request->method(), $request->path());
-                    $connection->send($this->response(call_user_func($routeInfo[1], $request)));
-                } catch (HttpException $e) {
-                    $connection->send($this->response('', $e->getMessage(), $e->getStatusCode()));
-                }
-            }
-        }
+        $this->httpHandler->onMessage($connection, $request);
     }
 
     /**
@@ -498,7 +490,7 @@ class HttpCrontab
      */
     public function onBufferFull($connection)
     {
-
+        $this->httpHandler->onBufferFull($connection);
     }
 
     /**
@@ -510,7 +502,7 @@ class HttpCrontab
      */
     public function onBufferDrain($connection)
     {
-
+        $this->httpHandler->onBufferDrain($connection);
     }
 
     /**
@@ -524,8 +516,7 @@ class HttpCrontab
      */
     public function onError($connection, $code, $msg)
     {
-        // TODO: 记录错误日志或处理错误
-        // 可在此处实现自定义的错误处理逻辑
+        $this->httpHandler->onError($connection, $code, $msg);
     }
 
     /**
@@ -541,152 +532,6 @@ class HttpCrontab
 
         if (! empty($ids)) {
             foreach ($ids as $id) {
-                $this->crontabRun($id);
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * 获取定时任务列表
-     *
-     * @param Request $request HTTP 请求对象
-     * @return array{list: list<array>, count: int}
-     */
-    private function crontabIndex($request)
-    {
-        list($page, $limit, $where)  = $this->buildTableParames($request->get());
-        list($whereStr, $bindValues) = $this->parseWhere($where);
-
-        return $this->db->getTaskList($whereStr, $bindValues, $page, $limit);
-    }
-
-    /**
-     * 创建定时任务
-     *
-     * @param Request $request HTTP 请求对象
-     * @return bool
-     */
-    private function crontabAdd($request)
-    {
-        $data                = $request->post();
-        $data['create_time'] = $data['update_time'] = time();
-        $id                  = $this->db->insertTask($data);
-        $id && $this->crontabRun($id);
-
-        return $id ? true : false;
-    }
-
-    /**
-     * 读取定时任务详情
-     *
-     * @param Request $request HTTP 请求对象
-     * @return array
-     */
-    private function crontabRead($request)
-    {
-        $row = [];
-        if ($id = $request->get('id')) {
-            $row = $this->db->getTask($id);
-        }
-        return $row;
-    }
-
-    /**
-     * 编辑定时任务
-     *
-     * @param Request $request HTTP 请求对象
-     * @return bool
-     */
-    private function crontabEdit($request)
-    {
-        if ($id = $request->get('id')) {
-            $post = $request->post();
-            $row  = $this->db->getTask($id);
-            if (empty($row)) {
-                return false;
-            }
-
-            $rowCount = $this->db->updateTask($id, $post);
-            if ($this->db->isTaskEnabled($row['status'])) {
-                // 如果频率或脚本发生变化，需要重启定时器
-                if ($row['frequency'] !== $post['frequency'] || $row['shell'] !== $post['shell']) {
-                    $this->crontabDestroy($id);
-                    $this->crontabRun($id);
-                }
-            }
-
-            return $rowCount ? true : false;
-        } else {
-            return false;
-        }
-    }
-
-    /**
-     * 修改定时器属性
-     *
-     * 支持修改 status（状态）和 sort（排序）字段
-     *
-     * @param Request $request HTTP 请求对象
-     * @return bool
-     */
-    private function crontabModify($request)
-    {
-        $post = $request->post();
-        if (in_array($post['field'], ['status', 'sort'])) {
-            $row = $this->db->updateTask($post['id'], [$post['field'] => $post['value']]);
-
-            if ($post['field'] === 'status') {
-                if ($this->db->isTaskEnabled($post['value'])) {
-                    $this->crontabRun($post['id']);
-                } else {
-                    $this->crontabDestroy($post['id']);
-                }
-            }
-
-            return $row ? true : false;
-        } else {
-            return false;
-        }
-    }
-
-    /**
-     * 删除定时任务
-     *
-     * @param Request $request HTTP 请求对象
-     * @return bool
-     */
-    private function crontabDelete($request)
-    {
-        if ($idStr = $request->post('id')) {
-            $ids = explode(',', $idStr);
-
-            foreach ($ids as $id) {
-                $this->crontabDestroy($id);
-            }
-            $rows = $this->db->deleteTask($idStr);
-
-            return $rows ? true : false;
-        }
-
-        return true;
-    }
-
-    /**
-     * 重启定时任务
-     *
-     * @param Request $request HTTP 请求对象
-     * @return bool
-     */
-    private function crontabReload(Request $request)
-    {
-        $ids = explode(',', $request->post('id'));
-
-        foreach ($ids as $id) {
-            $row = $this->db->getTask($id);
-            if ($row && $this->db->isTaskEnabled($row['status'])) {
-                $this->crontabDestroy($id);
                 $this->crontabRun($id);
             }
         }
@@ -776,49 +621,6 @@ class HttpCrontab
     }
 
     /**
-     * 获取定时任务池信息
-     *
-     * @return list<array{id: int, shell: string, frequency: string, remark: string, create_time: string}>
-     */
-    private function crontabPool()
-    {
-        $data = [];
-        foreach ($this->crontabPool as $row) {
-            unset($row['crontab']);
-            $data[] = $row;
-        }
-
-        return $data;
-    }
-
-    /**
-     * 心跳检测
-     *
-     * @return string
-     */
-    private function crontabPing()
-    {
-        return 'pong';
-    }
-
-    /**
-     * 获取执行日志列表
-     *
-     * @param Request $request HTTP 请求对象
-     * @return array{list: list<array>, count: int}
-     */
-    private function crontabFlow($request)
-    {
-        list($page, $limit, $where, $excludeFields) = $this->buildTableParames($request->get(), ['month']);
-        $request->get('sid') && $where[]            = ['sid', '=', $request->get('sid')];
-        list($whereStr, $bindValues)                = $this->parseWhere($where);
-
-        $suffix = $excludeFields['month'] ?? '';
-
-        return $this->db->getTaskLogList($suffix, $whereStr, $bindValues, $page, $limit);
-    }
-
-    /**
      * 输出日志到控制台
      *
      * @param string $msg 日志消息
@@ -828,117 +630,6 @@ class HttpCrontab
     private function writeln($msg, $ok = true)
     {
         echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . ($ok ? " [Ok] " : " [Fail] ") . PHP_EOL;
-    }
-
-    /**
-     * 构造 HTTP 响应
-     *
-     * @param mixed $data 响应数据
-     * @param string $msg 响应消息
-     * @param int $code HTTP 状态码
-     * @return Response
-     */
-    private function response($data = '', $msg = '信息调用成功！', $code = 200)
-    {
-        return new Response($code, [
-            'Content-Type' => 'application/json; charset=utf-8',
-        ], json_encode(['code' => $code, 'data' => $data, 'msg' => $msg]));
-    }
-
-    /**
-     * 构建表格查询参数
-     *
-     * @param array $get GET 请求参数
-     * @param list<string> $excludeFields 忽略构建搜索的字段
-     * @return array{0: int, 1: int, 2: list<array>, 3: array}
-     *               [页码, 每页数量, 查询条件, 排除字段]
-     */
-    private function buildTableParames($get, $excludeFields = [])
-    {
-        $page    = isset($get['page']) && ! empty($get['page']) ? (int) $get['page'] : 1;
-        $limit   = isset($get['limit']) && ! empty($get['limit']) ? (int) $get['limit'] : 15;
-        $filters = isset($get['filter']) && ! empty($get['filter']) ? $get['filter'] : '{}';
-        $ops     = isset($get['op']) && ! empty($get['op']) ? $get['op'] : '{}';
-
-        // JSON 转数组
-        $filters  = json_decode($filters, true);
-        $ops      = json_decode($ops, true);
-        $where    = [];
-        $excludes = [];
-
-        foreach ($filters as $key => $val) {
-            if (in_array($key, $excludeFields)) {
-                $excludes[$key] = $val;
-                continue;
-            }
-            $op = isset($ops[$key]) && ! empty($ops[$key]) ? $ops[$key] : '%*%';
-
-            switch (strtolower($op)) {
-                case '=':
-                    $where[] = [$key, '=', $val];
-                    break;
-                case '%*%':
-                    $where[] = [$key, 'LIKE', "%{$val}%"];
-                    break;
-                case '*%':
-                    $where[] = [$key, 'LIKE', "{$val}%"];
-                    break;
-                case '%*':
-                    $where[] = [$key, 'LIKE', "%{$val}"];
-                    break;
-                case 'range':
-                    list($beginTime, $endTime) = explode(' - ', $val);
-                    $where[]                   = [$key, '>=', strtotime($beginTime)];
-                    $where[]                   = [$key, '<=', strtotime($endTime)];
-                    break;
-                case 'in':
-                    $where[] = [$key, 'IN', $val];
-                    break;
-                default:
-                    $where[] = [$key, $op, "%{$val}"];
-            }
-        }
-
-        return [$page, $limit, $where, $excludes];
-    }
-
-    /**
-     * 解析查询条件
-     *
-     * @param list<array> $where 查询条件数组
-     * @return array{0: string, 1: array} [WHERE 语句, 绑定参数]
-     */
-    private function parseWhere($where)
-    {
-        if (! empty($where)) {
-            $whereStr   = '';
-            $bindValues = [];
-            foreach ($where as $index => $item) {
-                if ($item[0] === 'create_time') {
-                    $whereStr .= $item[0] . ' ' . $item[1] . ' :' . $item[0] . $index . ' AND ';
-                    $bindValues[$item[0] . $index] = $item[2];
-                } elseif ($item[1] === 'IN') {
-                    // @todo workerman/mysql包对in查询感觉有问题 临时用如下方式进行转化处理
-                    $whereStr .= '(';
-                    foreach (explode(',', $item[2]) as $k => $v) {
-                        $whereStr .= $item[0] . ' = :' . $item[0] . $k . ' OR ';
-                        $bindValues[$item[0] . $k] = $v;
-                    }
-                    $whereStr = rtrim($whereStr, 'OR ');
-                    $whereStr .= ') AND ';
-                } else {
-                    $whereStr .= $item[0] . ' ' . $item[1] . ' :' . $item[0] . ' AND ';
-                    $bindValues[$item[0]] = $item[2];
-                }
-            }
-        } else {
-            $whereStr   = '1 = 1';
-            $bindValues = [];
-        }
-
-        $whereStr = rtrim($whereStr, 'AND ');
-
-        return [$whereStr, $bindValues];
     }
 
     /**

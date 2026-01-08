@@ -1,7 +1,7 @@
 <?php
 namespace bingher\crontab\command;
 
-use bingher\crontab\HttpCrontab;
+use bingher\crontab\Crontab as CrontabServer;
 use think\console\Command;
 use think\console\Input;
 use think\console\input\Argument;
@@ -26,11 +26,18 @@ class Crontab extends Command
             return 1;
         }
         $config = config('crontab');
-        if ($config['base_uri'] && ! preg_match('/^https?:\/\//', $config['base_uri'])) {
+
+        // 检查 base_uri 格式（仅在启用 HTTP 服务时）
+        $enableHttp = $config['enable_http'] ?? true;
+        if ($enableHttp && $config['base_uri'] && ! preg_match('/^https?:\/\//', $config['base_uri'])) {
             $output->error('base_uri配置格式非法');
             return 1;
         }
-        $server = new HttpCrontab($config['base_uri'], $config['context']);
+
+        // 根据 enable_http 配置决定是否启用 HTTP 服务
+        $socketName = $enableHttp ? $config['base_uri'] : '';
+        $server     = new CrontabServer($socketName, $config['context'], $enableHttp);
+
         $config['debug'] && $server->setDebug();
         $server->setName($config['name'])
             ->setUser($config['user'])
