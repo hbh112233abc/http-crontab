@@ -5,6 +5,43 @@ use bingher\crontab\constant\YesNoConstant;
 use think\facade\Config;
 use think\facade\Db as ThinkDb;
 
+/**
+ * 数据库操作类
+ *
+ * @phpstan-type Task array{
+ *     id: int,
+ *     title: string,
+ *     type: int,
+ *     frequency: string,
+ *     shell: string,
+ *     running_times: int,
+ *     last_running_time: int,
+ *     remark: string,
+ *     sort: int,
+ *     status: int,
+ *     create_time: int,
+ *     update_time: int
+ * }
+ *
+ * @phpstan-type TaskLog array{
+ *     id: int,
+ *     sid: int,
+ *     command: string,
+ *     output: string,
+ *     return_var: int,
+ *     running_time: float,
+ *     create_time: int,
+ *     update_time: int
+ * }
+ *
+ * @phpstan-type TaskLock array{
+ *     id: int,
+ *     sid: int,
+ *     is_lock: int,
+ *     create_time: int,
+ *     update_time: int
+ * }
+ */
 class Db
 {
     /**
@@ -43,6 +80,10 @@ class Db
      */
     private $currentTaskLogTable;
 
+    /**
+     * 数据库连接对象
+     * @var \think\db\Connection
+     */
     protected $db;
 
     /**
@@ -63,7 +104,7 @@ class Db
     }
     /**
      * 获取定时任务id
-     * @return array
+     * @return list<int>
      */
     public function getTaskIds()
     {
@@ -75,8 +116,8 @@ class Db
 
     /**
      * 获取任务信息
-     * @param $id
-     * @return array
+     * @param int $id
+     * @return Task|null
      */
     public function getTask($id)
     {
@@ -87,11 +128,11 @@ class Db
 
     /**
      * 获取任务列表
-     * @param $whereStr
-     * @param $bindValues
-     * @param $page
-     * @param $limit
-     * @return array
+     * @param string $whereStr
+     * @param array $bindValues
+     * @param int $page
+     * @param int $limit
+     * @return array{list: list<Task>, count: int}
      */
     public function getTaskList($whereStr, $bindValues, $page, $limit)
     {
@@ -111,8 +152,8 @@ class Db
 
     /**
      * 新增任务
-     * @param array $data
-     * @return mixed|string|null
+     * @param Task $data
+     * @return int
      */
     public function insertTask(array $data)
     {
@@ -122,9 +163,9 @@ class Db
 
     /**
      * 更新任务信息
-     * @param $id
-     * @param array $data
-     * @return mixed|string|null
+     * @param int $id
+     * @param Task $data
+     * @return int
      */
     public function updateTask($id, array $data)
     {
@@ -135,8 +176,8 @@ class Db
 
     /**
      * 删除任务
-     * @param $id
-     * @return mixed|string|null
+     * @param int|string $id
+     * @return int
      */
     public function deleteTask($id)
     {
@@ -147,7 +188,7 @@ class Db
 
     /**
      * 任务是否启用
-     * @param $status
+     * @param int $status
      * @return bool
      */
     public function isTaskEnabled($status)
@@ -157,12 +198,12 @@ class Db
 
     /**
      * 获取执行日志列表
-     * @param $suffix
-     * @param $whereStr
-     * @param $bindValues
-     * @param $page
-     * @param $limit
-     * @return array
+     * @param string $suffix
+     * @param string $whereStr
+     * @param array $bindValues
+     * @param int $page
+     * @param int $limit
+     * @return array{list: list<TaskLog>, count: int}
      */
     public function getTaskLogList($suffix, $whereStr, $bindValues, $page, $limit)
     {
@@ -171,7 +212,7 @@ class Db
         if ($this->isTableExist($tableName)) {
             $list = $this->db->table($tableName)
                 ->whereRaw($whereStr, $bindValues)
-                ->order("Id DESC")
+                ->order("id DESC")
                 ->limit($limit)
                 ->page($page)
                 ->select()->toArray();
@@ -189,9 +230,9 @@ class Db
 
     /**
      * 插入执行日志
-     * @param $taskId
-     * @param array $data
-     * @return mixed|string|null
+     * @param int $taskId
+     * @param TaskLog $data
+     * @return int
      */
     public function insertTaskLog($taskId, array $data)
     {
@@ -202,8 +243,8 @@ class Db
 
     /**
      * 获取任务锁信息
-     * @param $taskId
-     * @return array
+     * @param int $taskId
+     * @return TaskLog|null
      */
     public function getTaskLock($taskId)
     {
@@ -214,9 +255,9 @@ class Db
 
     /**
      * 插入任务锁数据
-     * @param $taskId
+     * @param int $taskId
      * @param int $isLock
-     * @return mixed|string|null
+     * @return int
      */
     public function insertTaskLock($taskId, $isLock = 0)
     {
@@ -232,7 +273,7 @@ class Db
 
     /**
      * 更新任务锁信息
-     * @param $taskId
+     * @param int $taskId
      * @param array $data
      */
     public function updateTaskLock($taskId, array $data)
@@ -244,7 +285,7 @@ class Db
 
     /**
      * 加锁
-     * @param $taskId
+     * @param int $taskId
      * @return bool
      */
     public function taskLock($taskId)
@@ -254,7 +295,7 @@ class Db
 
     /**
      * 解锁
-     * @param $taskId
+     * @param int $taskId
      * @return bool
      */
     public function taskUnlock($taskId)
@@ -264,7 +305,7 @@ class Db
 
     /**
      * 重置锁
-     * @return mixed|string|null
+     * @return int
      */
     private function taskLockReset()
     {
@@ -274,7 +315,7 @@ class Db
 
     /**
      * 任务是否加锁
-     * @param $isLock
+     * @param int $isLock
      * @return bool
      */
     public function isTaskLocked($isLock)
@@ -284,7 +325,7 @@ class Db
 
     /**
      * 检查任务锁
-     * @param $taskId
+     * @param int $taskId
      * @return bool
      */
     public function checkTaskLock($taskId)
@@ -335,17 +376,17 @@ class Db
 
     /**
      * 获取数据库表名
-     * @return array
+     * @return list<string>
      */
     public function getDbTables()
     {
         $result = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-        return array_column($result, 'TABLE_NAME');
+        return array_column($result, 'name');
     }
 
     /**
      * 数据表是否存在
-     * @param $tableName
+     * @param string $tableName
      * @return bool
      */
     public function isTableExist($tableName)
