@@ -1,6 +1,6 @@
 <?php
 
-namespace Fairy\exception;
+namespace bingher\crontab\exception;
 
 class RouteNotFoundException extends HttpException
 {

@@ -1,10 +1,17 @@
-# 接口化秒级定时任务
+# ThinkCrontab接口化秒级定时任务
 
 ## 概述
 
-基于 **Workerman** + **MySQL** 的接口化秒级定时任务管理，兼容 Windows 和 Linux 系统。
+**项目来源**: [HttpCrontab](https://github.com/cshaptx4869/http-crontab)
 
+基于 **Workerman** + **Sqlite** 的接口化秒级定时任务管理，兼容 Windows 和 Linux 系统。
 
+> 主要改造点:
+
+- 加入Service配置
+- 数据库使用独立的Sqlite数据库
+- 安装扩展自动加入配置文件crontab
+- 仅作为ThinkPHP>=8的扩展
 
 ## 定时器格式说明
 
@@ -21,52 +28,14 @@
 
 
 
-## 简单使用
+## 使用
 
-- **新建 run.php**
-
-```php
-<?php
-
-require_once "./vendor/autoload.php";
-
-use Fairy\HttpCrontab;
-
-date_default_timezone_set('PRC');
-
-//数据库配置
-//启动脚本后会自行创建所需的数据表
-//定时器任务执行日志按月自动分表
-$dbConfig = [
-    'hostname' => '127.0.0.1',
-    'hostport' => '3306',
-    'username' => 'root',
-    'password' => 'root',
-    'database' => 'test',
-    'charset' => 'utf8mb4'
-];
-
-//启动后默认监听 http://127.0.0.1:2345 
-//可在new的时候传递第一个参数改变监听地址
-(new HttpCrontab())->setDebug(true)
-    ->setName('System Crontab')
-    ->setDbConfig($dbConfig)
-    ->run();
+```shell
+php think crontab start
 ```
 
-- **启动服务**
+## 帮助
 
-![](https://i.loli.net/2021/09/23/dTGRMSjkQZyWIbH.png)
-
-
-
-## 集成项目
-
-[**easyadmin** ](https://github.com/cshaptx4869/easyadmin)是基于 ThinkPHP6.1 和 Layui2.7 的快速开发的后台管理系统。
-
-- **启动服务**
-
-![](https://foruda.gitee.com/images/1680915958035390338/0f322a61_5507348.jpeg)
 
 ```bash
 $ php think crontab -h
@@ -90,16 +59,9 @@ Options:
 ```
 
 
+ <h1 class="curproject-name"> 定时器接口说明 </h1>
 
-- **UI操作界面**
-
-![](https://foruda.gitee.com/images/1680915293572426711/2433d945_5507348.jpeg)
-
-
-
- <h1 class="curproject-name"> 定时器接口说明 </h1> 
-
-
+> 默认接口地址: http://127.0.0.1:2345
 
 ## PING
 
@@ -612,4 +574,4 @@ Options:
                </tbody>
               </table>
 
-​            
+​

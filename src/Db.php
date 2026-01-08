@@ -1,35 +1,35 @@
 <?php
+namespace bingher\crontab;
 
-namespace Fairy;
-
-use Fairy\constant\YesNoConstant;
-use Workerman\MySQL\Connection;
+use bingher\crontab\constant\YesNoConstant;
+use think\facade\Config;
+use think\facade\Db as ThinkDb;
 
 class Db
 {
     /**
-     * 数据库句柄
-     * @var Connection
+     * 数据库配置
+     * @var array
      */
-    private $db;
+    private $dbConfig;
 
     /**
      * 定时任务表
      * @var string
      */
-    private $taskTable;
+    private $taskTable = 'crontab_task';
 
     /**
      * 定时任务日志表
      * @var string
      */
-    private $taskLogTable;
+    private $taskLogTable = 'crontab_task_log';
 
     /**
      * 定时任务锁表
      * @var string
      */
-    private $taskLockTable;
+    private $taskLockTable = 'crontab_task_lock';
 
     /**
      * 定时任务日志表后缀 按月分表
@@ -43,54 +43,34 @@ class Db
      */
     private $currentTaskLogTable;
 
-    /**
-     * 数据库配置
-     * @var array
-     */
-    private $dbConfig;
+    protected $db;
 
     /**
-     * @param array $config
-     * @param $taskTable
-     * @param $taskLogTable
-     * @param $taskLockTable
+     * 构造函数
      */
-    public function __construct(array $config, $taskTable, $taskLogTable, $taskLockTable)
+    public function __construct($config = [])
     {
-        $this->dbConfig = $config;
-        if ($this->dbConfig['prefix']) {
-            $this->taskTable = $this->dbConfig['prefix'] . $taskTable;
-            $this->taskLogTable = $this->dbConfig['prefix'] . $taskLogTable;
-            $this->taskLockTable = $this->dbConfig['prefix'] . $taskLockTable;
-        } else {
-            $this->taskTable = $taskTable;
-            $this->taskLogTable = $taskLogTable;
-            $this->taskLockTable = $taskLockTable;
+        $this->dbConfig = config('crontab.database');
+        if (! empty($config)) {
+            $this->dbConfig = array_merge($this->dbConfig, $config);
         }
-
-        $this->db = new Connection(
-            $this->dbConfig['hostname'],
-            $this->dbConfig['hostport'],
-            $this->dbConfig['username'],
-            $this->dbConfig['password'],
-            $this->dbConfig['database'],
-            $this->dbConfig['charset']
-        );
+        $connections = [
+            'crontab' => $this->dbConfig,
+        ];
+        $config['connections'] = array_merge(Config::get('database.connections'), $connections);
+        Config::set($config, 'database');
+        $this->db = ThinkDb::connect('crontab');
     }
-
     /**
      * 获取定时任务id
      * @return array
      */
     public function getTaskIds()
     {
-        return $this->db
-            ->select('id')
-            ->from($this->taskTable)
-            ->where("status= :status")
-            ->bindValues(['status' => YesNoConstant::YES])
-            ->orderByDESC(['sort'])
-            ->column();
+        return $this->db->table($this->taskTable)
+            ->where("status", "=", YesNoConstant::YES)
+            ->order("sort DESC")
+            ->column('id');
     }
 
     /**
@@ -100,12 +80,9 @@ class Db
      */
     public function getTask($id)
     {
-        return $this->db
-            ->select('*')
-            ->from($this->taskTable)
-            ->where('id= :id')
-            ->bindValues(['id' => $id])
-            ->row();
+        return $this->db->table($this->taskTable)
+            ->where('id', '=', $id)
+            ->find();
     }
 
     /**
@@ -118,22 +95,16 @@ class Db
      */
     public function getTaskList($whereStr, $bindValues, $page, $limit)
     {
-        $list = $this->db
-            ->select('*')
-            ->from($this->taskTable)
-            ->where($whereStr)
-            ->orderByDESC(['sort'])
+        $list = $this->db->table($this->taskTable)
+            ->whereRaw($whereStr, $bindValues)
+            ->order("sort DESC")
             ->limit($limit)
-            ->offset(($page - 1) * $limit)
-            ->bindValues($bindValues)
-            ->query();
+            ->page($page)
+            ->select()->toArray();
 
-        $count = $this->db
-            ->select('count(id)')
-            ->from($this->taskTable)
-            ->where($whereStr)
-            ->bindValues($bindValues)
-            ->single();
+        $count = $this->db->table($this->taskTable)
+            ->whereRaw($whereStr, $bindValues)
+            ->count();
 
         return ['list' => $list, 'count' => $count];
     }
@@ -145,10 +116,8 @@ class Db
      */
     public function insertTask(array $data)
     {
-        return $this->db
-            ->insert($this->taskTable)
-            ->cols($data)
-            ->query();
+        return $this->db->table($this->taskTable)
+            ->insertGetId($data);
     }
 
     /**
@@ -159,12 +128,9 @@ class Db
      */
     public function updateTask($id, array $data)
     {
-        return $this->db
-            ->update($this->taskTable)
-            ->cols($data)
-            ->where('id = :id')
-            ->bindValues(['id' => $id])
-            ->query();
+        return $this->db->table($this->taskTable)
+            ->where('id', '=', $id)
+            ->update($data);
     }
 
     /**
@@ -174,10 +140,9 @@ class Db
      */
     public function deleteTask($id)
     {
-        return $this->db
-            ->delete($this->taskTable)
-            ->where('id in (' . $id . ')')
-            ->query();
+        return $this->db->table($this->taskTable)
+            ->whereIn('id', explode(',', $id))
+            ->delete();
     }
 
     /**
@@ -191,7 +156,7 @@ class Db
     }
 
     /**
-     * 获取执行日职列表
+     * 获取执行日志列表
      * @param $suffix
      * @param $whereStr
      * @param $bindValues
@@ -204,24 +169,18 @@ class Db
         $tableName = $suffix ? $this->taskLogTable . '_' . str_replace('-', '', $suffix) : $this->currentTaskLogTable;
 
         if ($this->isTableExist($tableName)) {
-            $list = $this->db
-                ->select('*')
-                ->from($tableName)
-                ->where($whereStr)
-                ->orderByDESC(['Id'])
+            $list = $this->db->table($tableName)
+                ->whereRaw($whereStr, $bindValues)
+                ->order("Id DESC")
                 ->limit($limit)
-                ->offset(($page - 1) * $limit)
-                ->bindValues($bindValues)
-                ->query();
+                ->page($page)
+                ->select()->toArray();
 
-            $count = $this->db
-                ->select('count(id)')
-                ->from($tableName)
-                ->where($whereStr)
-                ->bindValues($bindValues)
-                ->single();
+            $count = $this->db->table($tableName)
+                ->whereRaw($whereStr, $bindValues)
+                ->count();
         } else {
-            $list = [];
+            $list  = [];
             $count = 0;
         }
 
@@ -237,10 +196,8 @@ class Db
     public function insertTaskLog($taskId, array $data)
     {
         $data['sid'] = $taskId;
-        return $this->db
-            ->insert($this->currentTaskLogTable)
-            ->cols($data)
-            ->query();
+        return $this->db->table($this->currentTaskLogTable)
+            ->insertGetId($data);
     }
 
     /**
@@ -250,12 +207,9 @@ class Db
      */
     public function getTaskLock($taskId)
     {
-        return $this->db
-            ->select('*')
-            ->from($this->taskLockTable)
-            ->where('sid = :sid')
-            ->bindValues(['sid' => $taskId])
-            ->row();
+        return $this->db->table($this->taskLockTable)
+            ->where('sid', '=', $taskId)
+            ->find();
     }
 
     /**
@@ -267,14 +221,13 @@ class Db
     public function insertTaskLock($taskId, $isLock = 0)
     {
         $now = time();
-        return $this->db
-            ->insert($this->taskLockTable)
-            ->cols([
-                'sid' => $taskId,
-                'is_lock' => $isLock,
+        return $this->db->table($this->taskLockTable)
+            ->insertGetId([
+                'sid'         => $taskId,
+                'is_lock'     => $isLock,
                 'create_time' => $now,
-                'update_time' => $now
-            ])->query();
+                'update_time' => $now,
+            ]);
     }
 
     /**
@@ -284,12 +237,9 @@ class Db
      */
     public function updateTaskLock($taskId, array $data)
     {
-        return $this->db
-            ->update($this->taskLockTable)
-            ->cols($data)
-            ->where('sid = :sid')
-            ->bindValue('sid', $taskId)
-            ->query();
+        return $this->db->table($this->taskLockTable)
+            ->where('sid', '=', $taskId)
+            ->update($data);
     }
 
     /**
@@ -318,15 +268,13 @@ class Db
      */
     private function taskLockReset()
     {
-        return $this->db
-            ->update($this->taskLockTable)
-            ->cols(['is_lock' => YesNoConstant::NO, 'update_time' => time()])
-            ->query();
+        return $this->db->table($this->taskLockTable)
+            ->update(['is_lock' => YesNoConstant::NO, 'update_time' => time()]);
     }
 
     /**
      * 任务是否加锁
-     * @param $taskId
+     * @param $isLock
      * @return bool
      */
     public function isTaskLocked($isLock)
@@ -342,7 +290,7 @@ class Db
     public function checkTaskLock($taskId)
     {
         $taskLockInfo = $this->getTaskLock($taskId);
-        if (!$taskLockInfo) {
+        if (! $taskLockInfo) {
             $this->insertTaskLock($taskId);
             return false;
         } else {
@@ -357,11 +305,11 @@ class Db
     {
         $date = date('Ym', time());
         if ($date !== $this->taskLogTableSuffix) {
-            $this->taskLogTableSuffix = $date;
+            $this->taskLogTableSuffix  = $date;
             $this->currentTaskLogTable = $this->taskLogTable . "_" . $this->taskLogTableSuffix;
-            $allTables = $this->getDbTables();
-            !in_array($this->taskTable, $allTables) && $this->createTaskTable();
-            !in_array($this->currentTaskLogTable, $allTables) && $this->createTaskLogTable();
+            $allTables                 = $this->getDbTables();
+            ! in_array($this->taskTable, $allTables) && $this->createTaskTable();
+            ! in_array($this->currentTaskLogTable, $allTables) && $this->createTaskLogTable();
             if (in_array($this->taskLockTable, $allTables)) {
                 $this->taskLockReset();
             } else {
@@ -377,7 +325,7 @@ class Db
     {
         $date = date('Ym', time());
         if ($date !== $this->taskLogTableSuffix) {
-            $this->taskLogTableSuffix = $date;
+            $this->taskLogTableSuffix  = $date;
             $this->currentTaskLogTable = $this->taskLogTable . "_" . $this->taskLogTableSuffix;
             if ($this->isTableExist($this->currentTaskLogTable) === false) {
                 $this->createTaskLogTable();
@@ -391,12 +339,8 @@ class Db
      */
     public function getDbTables()
     {
-        return $this->db
-            ->select('TABLE_NAME')
-            ->from('information_schema.TABLES')
-            ->where("TABLE_TYPE='BASE TABLE'")
-            ->where("TABLE_SCHEMA='" . $this->dbConfig['database'] . "'")
-            ->column();
+        $result = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+        return array_column($result, 'TABLE_NAME');
     }
 
     /**
@@ -406,13 +350,8 @@ class Db
      */
     public function isTableExist($tableName)
     {
-        return $this->db
-                ->select('TABLE_NAME')
-                ->from('information_schema.TABLES')
-                ->where("TABLE_TYPE='BASE TABLE'")
-                ->where("TABLE_SCHEMA='" . $this->dbConfig['database'] . "'")
-                ->where("TABLE_NAME='" . $tableName . "'")
-                ->single() !== false;
+        $result = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [$tableName]);
+        return ! empty($result);
     }
 
     /**
@@ -421,28 +360,23 @@ class Db
     private function createTaskTable()
     {
         $sql = <<<SQL
- CREATE TABLE IF NOT EXISTS `{$this->taskTable}`  (
-  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
-  `title` varchar(60) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '任务标题',
-  `type` tinyint(4) NOT NULL DEFAULT 0 COMMENT '任务类型[0请求url,1执行sql,2执行shell]',
-  `frequency` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '任务频率',
-  `shell` varchar(150) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL DEFAULT '' COMMENT '任务脚本',
-  `running_times` int(11) NOT NULL DEFAULT '0' COMMENT '已运行次数',
-  `last_running_time` int(11) NOT NULL DEFAULT '0' COMMENT '最近运行时间',
-  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '任务备注',
-  `sort` int(11) NOT NULL DEFAULT 0 COMMENT '排序，越大越前',
-  `status` tinyint(4) NOT NULL DEFAULT 0 COMMENT '任务状态状态[0:禁用;1启用]',
-  `create_time` int(11) NOT NULL DEFAULT 0 COMMENT '创建时间',
-  `update_time` int(11) NOT NULL DEFAULT 0 COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  INDEX `title`(`title`) USING BTREE,
-  INDEX `type`(`type`) USING BTREE,
-  INDEX `create_time`(`create_time`) USING BTREE,
-  INDEX `status`(`status`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时器任务表' ROW_FORMAT = DYNAMIC
+CREATE TABLE IF NOT EXISTS `{$this->taskTable}` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT, -- 任务ID
+  `title` TEXT NOT NULL, -- 任务标题
+  `type` INTEGER NOT NULL DEFAULT 0, -- 任务类型[0请求url,1执行sql,2执行shell]
+  `frequency` TEXT NOT NULL, -- 任务频率
+  `shell` TEXT NOT NULL DEFAULT '', -- 任务脚本
+  `running_times` INTEGER NOT NULL DEFAULT 0, -- 已运行次数
+  `last_running_time` INTEGER NOT NULL DEFAULT 0, -- 最近运行时间
+  `remark` TEXT NOT NULL, -- 任务备注
+  `sort` INTEGER NOT NULL DEFAULT 0, -- 排序，越大越前
+  `status` INTEGER NOT NULL DEFAULT 0, -- 任务状态[0:禁用;1启用]
+  `create_time` INTEGER NOT NULL DEFAULT 0, -- 创建时间
+  `update_time` INTEGER NOT NULL DEFAULT 0 -- 更新时间
+)
 SQL;
 
-        return $this->db->query($sql);
+        return $this->db->execute($sql);
     }
 
     /**
@@ -451,42 +385,36 @@ SQL;
     private function createTaskLogTable()
     {
         $sql = <<<SQL
-CREATE TABLE IF NOT EXISTS `{$this->currentTaskLogTable}`  (
-  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
-  `sid` int(60) NOT NULL COMMENT '任务id',
-  `command` varchar(255) NOT NULL COMMENT '执行命令',
-  `output` text NOT NULL COMMENT '执行输出',
-  `return_var` tinyint(4) NOT NULL COMMENT '执行返回状态[0成功; 1失败]',
-  `running_time` varchar(10) NOT NULL COMMENT '执行所用时间',
-  `create_time` int(11) NOT NULL DEFAULT 0 COMMENT '创建时间',
-  `update_time` int(11) NOT NULL DEFAULT 0 COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  INDEX `sid`(`sid`) USING BTREE,
-  INDEX `create_time`(`create_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时器任务流水表{$this->taskLogTableSuffix}' ROW_FORMAT = DYNAMIC
+CREATE TABLE IF NOT EXISTS `{$this->currentTaskLogTable}` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT, -- ID
+  `sid` INTEGER NOT NULL, -- 任务ID
+  `command` TEXT NOT NULL, -- 执行命令
+  `output` TEXT NOT NULL, -- 执行输出
+  `return_var` INTEGER NOT NULL, -- 执行返回状态[0成功; 1失败]
+  `running_time` TEXT NOT NULL, -- 执行所用时间
+  `create_time` INTEGER NOT NULL DEFAULT 0, -- 创建时间
+  `update_time` INTEGER NOT NULL DEFAULT 0 -- 更新时间
+)
 SQL;
 
-        return $this->db->query($sql);
+        return $this->db->execute($sql);
     }
 
     /**
-     * 定时器任务流水表
+     * 定时器任务锁表
      */
     private function createTaskLockTable()
     {
         $sql = <<<SQL
-CREATE TABLE IF NOT EXISTS `{$this->taskLockTable}`  (
-  `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT,
-  `sid` int(60) NOT NULL COMMENT '任务id',
-  `is_lock` tinyint(4) NOT NULL DEFAULT 0 COMMENT '是否锁定(0:否,1是)',
-  `create_time` int(11) NOT NULL DEFAULT 0 COMMENT '创建时间',
-  `update_time` int(11) NOT NULL DEFAULT 0 COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE,
-  INDEX `sid`(`sid`) USING BTREE,
-  INDEX `create_time`(`create_time`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '定时器任务锁表' ROW_FORMAT = DYNAMIC
+CREATE TABLE IF NOT EXISTS `{$this->taskLockTable}` (
+  `id` INTEGER PRIMARY KEY AUTOINCREMENT, -- ID
+  `sid` INTEGER NOT NULL, -- 任务ID
+  `is_lock` INTEGER NOT NULL DEFAULT 0, -- 是否锁定(0:否,1是)
+  `create_time` INTEGER NOT NULL DEFAULT 0, -- 创建时间
+  `update_time` INTEGER NOT NULL DEFAULT 0 -- 更新时间
+)
 SQL;
 
-        return $this->db->query($sql);
+        return $this->db->execute($sql);
     }
 }

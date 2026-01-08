@@ -1,0 +1,12 @@
+<phpunit colors="true" verbose="true" bootstrap="./vendor/bingher/think-test/src/init.php">
+  <coverage cacheDirectory="./runtime/phpunit/" pathCoverage="true">
+    <report>
+      <html outputDirectory="./runtime/phpunit/" lowUpperBound="50" highLowerBound="90"/>
+    </report>
+  </coverage>
+  <testsuites>
+    <testsuite name="crontab">
+      <directory>src/test</directory>
+    </testsuite>
+  </testsuites>
+</phpunit>

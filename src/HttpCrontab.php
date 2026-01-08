@@ -1,9 +1,9 @@
 <?php
 
 
-namespace Fairy;
+namespace bingher\crontab;
 
-use Fairy\exception\HttpException;
+use bingher\crontab\exception\HttpException;
 use Workerman\Connection\TcpConnection;
 use Workerman\Crontab\Crontab;
 use Workerman\Protocols\Http\Request;
@@ -14,7 +14,7 @@ use Workerman\Worker;
 /**
  * 注意：定时器开始、暂停、重起 都是在下一分钟开始执行
  * Class CrontabService
- * @package Fairy
+ * @package bingher\crontab
  */
 class HttpCrontab
 {
@@ -30,38 +30,6 @@ class HttpCrontab
      */
     private $workerName = "Workerman Http Crontab";
 
-    /**
-     * 数据库配置
-     * @var array
-     */
-    private $dbConfig = [
-        'hostname' => '127.0.0.1',
-        'hostport' => '3306',
-        'username' => 'root',
-        'password' => 'root',
-        'database' => 'test',
-        'charset' => 'utf8mb4',
-        'prefix' => '',
-    ];
-
-
-    /**
-     * 定时任务表
-     * @var string
-     */
-    private $taskTable = 'crontab_task';
-
-    /**
-     * 定时任务日志表
-     * @var string
-     */
-    private $taskLogTable = 'crontab_task_log';
-
-    /**
-     * 定时任务锁表
-     * @var string
-     */
-    private $taskLockTable = 'crontab_task_lock';
 
     /**
      * 数据库句柄
@@ -348,57 +316,12 @@ class HttpCrontab
     }
 
     /**
-     * 设置数据库链接信息
-     * @param array $config
-     * @return $this
-     */
-    public function setDbConfig(array $config = [])
-    {
-        $this->dbConfig = array_merge($this->dbConfig, array_change_key_case($config));
-
-        return $this;
-    }
-
-    /**
-     * 设置任务表名
-     * @param string $taskTable
-     * @return HttpCrontab
-     */
-    public function setTaskTable(string $taskTable)
-    {
-        $this->taskTable = $taskTable;
-        return $this;
-    }
-
-    /**
-     * 设置任务日志表名
-     * @param string $taskLogTable
-     * @return HttpCrontab
-     */
-    public function setTaskLogTable(string $taskLogTable)
-    {
-        $this->taskLogTable = $taskLogTable;
-        return $this;
-    }
-
-    /**
-     * 设置任务锁表名
-     * @param string $taskLockTable
-     * @return HttpCrontab
-     */
-    public function setTaskLockTable(string $taskLockTable)
-    {
-        $this->taskLockTable = $taskLockTable;
-        return $this;
-    }
-
-    /**
      * 设置Worker子进程启动时的回调函数，每个子进程启动时都会执行
      * @param Worker $worker
      */
     public function onWorkerStart($worker)
     {
-        $this->db = new Db($this->dbConfig, $this->taskTable, $this->taskLogTable, $this->taskLockTable);
+        $this->db = new Db();
         $this->db->checkTaskTables();
         $this->crontabInit();
         //定时检查日志分表

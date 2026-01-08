@@ -1,9 +1,9 @@
 <?php
 
-namespace Fairy;
+namespace bingher\crontab;
 
-use Fairy\exception\RouteMethodNotAllowException;
-use Fairy\exception\RouteNotFoundException;
+use bingher\crontab\exception\RouteMethodNotAllowException;
+use bingher\crontab\exception\RouteNotFoundException;
 use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 

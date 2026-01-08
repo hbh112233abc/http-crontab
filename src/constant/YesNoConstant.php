@@ -1,6 +1,6 @@
 <?php
 
-namespace Fairy\constant;
+namespace bingher\crontab\constant;
 
 class YesNoConstant
 {

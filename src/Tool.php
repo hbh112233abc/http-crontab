@@ -1,6 +1,6 @@
 <?php
 
-namespace Fairy;
+namespace bingher\crontab;
 
 class Tool
 {
