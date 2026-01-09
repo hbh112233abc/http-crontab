@@ -30,9 +30,20 @@
 
 ## 使用
 
+### 启动服务
+
 ```shell
 php think crontab start
 ```
+
+### 访问管理页面
+
+在配置文件中设置 `enable_http => true` 后，启动服务后即可通过浏览器访问配置的 `base_uri` 地址打开前端管理页面。例如：
+
+- 默认配置: `http://127.0.0.1:2345`
+- 自定义配置: `http://0.0.0.0:8080`
+
+**注意**: 如需禁用 HTTP 服务和前端管理页面，设置 `enable_http => false` 即可，服务将仅运行定时任务。
 
 ## 帮助
 
@@ -105,8 +116,9 @@ return [
 | name | string | 'Http Crontab Server' | 定时器服务名称 |
 | user | string | 'root' | Worker 进程运行用户（Linux 系统有效） |
 | debug | bool | false | 是否开启调试模式 |
+| enable_http | bool | `env('crontab.enable_http', false)` | 是否启用 HTTP 服务。true: 同时运行 Crontab 定时任务和 HTTP 接口服务；false: 仅运行 Crontab 定时任务，不提供 HTTP 接口。**启用后可访问前端管理页面** |
 | context | array | [] | Socket 上下文选项，支持 SSL 等配置 |
-| base_uri | string | `'http://127.0.0.1:2345'` | 服务监听地址 |
+| base_uri | string | `'http://127.0.0.1:2345'` | 服务监听地址。启用 HTTP 服务后，通过此地址访问管理页面 |
 | safe_key | string | 环境变量或默认值 | API 安全秘钥，用于接口访问验证 |
 
 #### 数据库配置
@@ -126,15 +138,19 @@ return [
 
 ```php
 return [
-    'base_uri' => 'http://0.0.0.0:8080',  // 监听所有网卡的8080端口
+    'enable_http' => true,  // 启用 HTTP 接口服务
+    'base_uri' => 'http://0.0.0.0:8080',  // 监听所有网卡的8080端口，通过此地址访问管理页面
     // ...其他配置
 ];
 ```
+
+**访问管理页面**: 启用 HTTP 服务后，访问 `http://127.0.0.1:8080` 即可打开定时任务前端管理页面。
 
 #### 2. 启用 HTTPS (SSL)
 
 ```php
 return [
+    'enable_http' => true,  // 启用 HTTP 接口服务
     'base_uri' => 'https://0.0.0.0:8443',
     'context'  => [
         'ssl' => [
@@ -147,7 +163,9 @@ return [
 ];
 ```
 
-#### 3. 使用环境变量配置安全秘钥
+**访问管理页面**: 启用 HTTPS 后，访问 `https://0.0.0.0:8443` 即可打开定时任务前端管理页面。
+
+#### 3. 使用环境变量配置安全秘钥和HTTP服务
 
 在 `.env` 文件中添加：
 
@@ -155,22 +173,27 @@ return [
 # Crontab 配置
 CRON_CRONTAB_BASE_URI=http://0.0.0.0:8080
 CRON_CRONTAB_SAFE_KEY=your_custom_secret_key_here
+CRONTAB_ENABLE_HTTP=true  # 启用 HTTP 接口服务
 ```
 
 配置文件中：
 
 ```php
 return [
+    'enable_http' => env('crontab.enable_http', false),  // 使用环境变量
     'base_uri' => env('cron.crontab_base_uri', 'http://127.0.0.1:2345'),
     'safe_key' => env('cron.crontab_safe_key', ''),
     // ...其他配置
 ];
 ```
 
+**访问管理页面**: 启用 HTTP 服务后，访问 `.env` 中配置的 `CRON_CRONTAB_BASE_URI` 地址即可打开定时任务前端管理页面。
+
 #### 4. 自定义数据库路径
 
 ```php
 return [
+    'enable_http' => false,  // 禁用 HTTP 接口，仅运行定时任务，不提供管理页面
     'database' => [
         'type'     => 'sqlite',
         'database' => runtime_path() . 'crontab/crontab.db',  // 使用 runtime 目录
@@ -179,14 +202,17 @@ return [
 ];
 ```
 
+**说明**: 设置 `enable_http => false` 时，仅运行定时任务，不提供 HTTP 接口和前端管理页面访问。
+
 #### 5. 开发环境完整配置
 
 ```php
 return [
-    'name'     => 'Dev Crontab Server',
-    'debug'    => true,  // 开启调试模式
-    'base_uri' => 'http://127.0.0.1:8080',
-    'safe_key' => 'dev_key_for_testing',
+    'name'        => 'Dev Crontab Server',
+    'debug'       => true,  // 开启调试模式
+    'enable_http' => true,  // 启用 HTTP 接口服务
+    'base_uri'    => 'http://127.0.0.1:8080',
+    'safe_key'    => 'dev_key_for_testing',
     'database' => [
         'type'         => 'sqlite',
         'database'     => __DIR__ . '/crontab.db',
@@ -196,15 +222,18 @@ return [
 ];
 ```
 
+**访问管理页面**: 启动服务后，访问 `http://127.0.0.1:8080` 即可打开前端管理页面进行定时任务管理。
+
 #### 6. 生产环境优化配置
 
 ```php
 return [
-    'name'     => 'Production Crontab Server',
-    'user'     => 'www-data',  // 使用低权限用户运行
-    'debug'    => false,
-    'base_uri' => 'http://0.0.0.0:2345',
-    'safe_key' => env('cron.crontab_safe_key', ''),  // 使用环境变量
+    'name'        => 'Production Crontab Server',
+    'user'        => 'www-data',  // 使用低权限用户运行
+    'debug'       => false,
+    'enable_http' => env('crontab.enable_http', false),  // 根据环境变量决定是否启用 HTTP 接口
+    'base_uri'    => 'http://0.0.0.0:2345',
+    'safe_key'    => env('cron.crontab_safe_key', ''),  // 使用环境变量
     'database' => [
         'type'         => 'sqlite',
         'database'     => '/data/crontab/crontab.db',  // 使用独立数据目录
@@ -215,6 +244,8 @@ return [
 ];
 ```
 
+**说明**: 生产环境可根据需要设置 `CRONTAB_ENABLE_HTTP=true` 启用管理页面，或设置为 `false` 仅运行定时任务。启用后访问 `http://0.0.0.0:2345` 即可打开管理页面。
+
 ### 安全说明
 
 1. **修改安全秘钥**：生产环境务必修改 `safe_key` 为强密码
@@ -222,6 +253,7 @@ return [
 3. **HTTPS**：生产环境建议使用 HTTPS 加密传输
 4. **防火墙**：限制对定时任务接口的访问权限
 5. **运行用户**：使用低权限用户（如 `www-data`）而非 root
+6. **HTTP 服务开关**：生产环境如果不需要管理接口，可设置 `enable_http => false` 禁用 HTTP 服务，仅运行定时任务
 
 ### 注意事项
 
@@ -231,6 +263,7 @@ return [
 4. **Worker 用户**：`user` 配置仅在 Linux 系统且当前用户为 root 时生效
 5. **端口占用**：确保 `base_uri` 指定的端口未被其他程序占用
 6. **时间粒度**：定时器开始、暂停、重启 都是在下一分钟开始执行
+7. **HTTP 服务**：设置 `enable_http => true` 时才会启动 HTTP 接口服务；设置为 `false` 时仅运行定时任务，不提供接口管理功能
 
 
 ## 数据库操作
@@ -682,6 +715,8 @@ $db->deleteTask($taskId);
 ## 任务操作
 
  <h1 class="curproject-name"> 定时器接口说明 </h1>
+
+> **重要提示**: 以下接口需要在配置文件中设置 `enable_http => true` 启用 HTTP 服务后才能使用。启用后可通过访问 `base_uri` 地址打开前端管理页面进行可视化操作，或通过以下 API 接口进行编程调用。
 
 > 默认接口地址: http://127.0.0.1:2345
 
