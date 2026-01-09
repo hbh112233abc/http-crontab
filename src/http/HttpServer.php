@@ -33,6 +33,7 @@ class HttpServer
     /**
      * 路由路径定义
      */
+    const ROOT_PATH   = '/';               // 根路由 - 前端页面
     const INDEX_PATH  = '/crontab/index';  // 任务列表
     const ADD_PATH    = '/crontab/add';    // 添加任务
     const EDIT_PATH   = '/crontab/edit';   // 编辑任务
@@ -75,23 +76,30 @@ class HttpServer
     private $safeKey;
 
     /**
+     * 日志记录函数
+     * @var callable
+     */
+    private $logHandler;
+
+    /**
      * 构造函数
      *
      * @param Db $db 数据库实例
      * @param array &$crontabPool 任务池引用
      * @param callable $crontabDestroyCallback 任务销毁回调
      * @param callable $crontabRunCallback 任务运行回调
-     * @param bool $debug 调试模式
-     * @param string|null $safeKey 安全秘钥
+     * @param array{debug:bool,safeKey:string} $config 配置信息
+     * @param callable $logHandler 日志方法
      */
-    public function __construct(Db $db, &$crontabPool, callable $crontabDestroyCallback, callable $crontabRunCallback, $debug = false, $safeKey = null)
+    public function __construct(Db $db, &$crontabPool, callable $crontabDestroyCallback, callable $crontabRunCallback, array $config, callable $logHandler)
     {
         $this->db                     = $db;
         $this->crontabPool            = &$crontabPool;
         $this->crontabDestroyCallback = $crontabDestroyCallback;
         $this->crontabRunCallback     = $crontabRunCallback;
-        $this->debug                  = $debug;
-        $this->safeKey                = $safeKey;
+        $this->debug                  = $config['debug'] ?? false;
+        $this->safeKey                = $config['safeKey'] ?? '';
+        $this->logHandler             = $logHandler ?? error_log(...);
         $this->registerRoutes();
     }
 
@@ -101,6 +109,7 @@ class HttpServer
     private function registerRoutes()
     {
         $this->dispatcher = \FastRoute\simpleDispatcher(function (RouteCollector $r) {
+            $r->addRoute('GET', self::ROOT_PATH, [$this, 'serveIndex']);
             $r->addRoute('GET', self::INDEX_PATH, [$this, 'crontabIndex']);
             $r->addRoute('POST', self::ADD_PATH, [$this, 'crontabAdd']);
             $r->addRoute('GET', self::READ_PATH, [$this, 'crontabRead']);
@@ -149,6 +158,46 @@ class HttpServer
         return $request->header('key') === $this->safeKey;
     }
 
+    public function log($message)
+    {
+        call_user_func($this->logHandler, $message);
+    }
+
+    /**
+     * 服务 index.html 前端页面
+     *
+     * @param Request $request HTTP 请求对象
+     * @return Response
+     */
+    public function serveIndex($request)
+    {
+        $indexPath = __DIR__ . '/index.html';
+
+        // 调试信息
+        if ($this->debug) {
+            $this->log("serveIndex called, indexPath: " . $indexPath);
+            $this->log("File exists: " . (file_exists($indexPath) ? 'YES' : 'NO'));
+        }
+
+        if (file_exists($indexPath)) {
+            $content = file_get_contents($indexPath);
+            if ($this->debug) {
+                $this->log("File size: " . strlen($content) . " bytes");
+            }
+            return new Response(200, [
+                'Content-Type' => 'text/html; charset=utf-8',
+            ], $content);
+        }
+
+        if ($this->debug) {
+            $this->log("index.html not found!");
+        }
+
+        return new Response(404, [
+            'Content-Type' => 'text/plain; charset=utf-8',
+        ], 'index.html not found');
+    }
+
     /**
      * 获取定时任务列表
      *
@@ -171,9 +220,8 @@ class HttpServer
      */
     public function crontabAdd($request)
     {
-        $data                = $request->post();
-        $data['create_time'] = $data['update_time'] = time();
-        $id                  = $this->db->insertTask($data);
+        $data = $request->post();
+        $id   = $this->db->insertTask($data);
         $id && call_user_func($this->crontabRunCallback, $id);
 
         return $id ? true : false;

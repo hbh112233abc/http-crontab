@@ -1,0 +1,22 @@
+2026-01-09 15:11:21 pid:1 Worker process terminated with ERROR: E_COMPILE_ERROR "Constant expression contains invalid operations in D:\www\bingher\http-crontab\src\http\HttpServer.php on line 94"
+2026-01-09 15:13:05 pid:1 TypeError: think\Log::info(): Argument #1 ($message) must be of type Stringable|string, array given in D:\www\bingher\http-crontab\vendor\psr\log\src\LoggerTrait.php:77
+Stack trace:
+#0 [internal function]: think\Log->info(Array, Array)
+#1 D:\www\bingher\http-crontab\vendor\topthink\think-container\src\Facade.php(97): call_user_func_array(Array, Array)
+#2 D:\www\bingher\http-crontab\src\CrontabServer.php(353): think\Facade::__callStatic('info', Array)
+#3 [internal function]: bingher\crontab\CrontabServer->log(Array)
+#4 D:\www\bingher\http-crontab\src\http\HttpServer.php(163): call_user_func(Object(Closure), Array)
+#5 D:\www\bingher\http-crontab\src\http\HttpHandler.php(81): bingher\crontab\http\HttpServer->log('Request path: /...')
+#6 D:\www\bingher\http-crontab\vendor\workerman\workerman\Connection\TcpConnection.php(653): bingher\crontab\http\HttpHandler->onMessage(Object(Workerman\Connection\TcpConnection), Object(Workerman\Protocols\Http\Request))
+#7 D:\www\bingher\http-crontab\vendor\workerman\workerman\Events\Select.php(311): Workerman\Connection\TcpConnection->baseRead(Resource id #157)
+#8 D:\www\bingher\http-crontab\vendor\workerman\workerman\Worker.php(1569): Workerman\Events\Select->loop()
+#9 D:\www\bingher\http-crontab\vendor\workerman\workerman\Worker.php(1486): Workerman\Worker::forkWorkersForWindows()
+#10 D:\www\bingher\http-crontab\vendor\workerman\workerman\Worker.php(561): Workerman\Worker::forkWorkers()
+#11 D:\www\bingher\http-crontab\src\CrontabServer.php(589): Workerman\Worker::runAll()
+#12 D:\www\bingher\http-crontab\src\command\Crontab.php(49): bingher\crontab\CrontabServer->run()
+#13 D:\www\bingher\http-crontab\vendor\topthink\framework\src\think\console\Command.php(210): bingher\crontab\command\Crontab->execute(Object(think\console\Input), Object(think\console\Output))
+#14 D:\www\bingher\http-crontab\vendor\topthink\framework\src\think\Console.php(655): think\console\Command->run(Object(think\console\Input), Object(think\console\Output))
+#15 D:\www\bingher\http-crontab\vendor\topthink\framework\src\think\Console.php(314): think\Console->doRunCommand(Object(bingher\crontab\command\Crontab), Object(think\console\Input), Object(think\console\Output))
+#16 D:\www\bingher\http-crontab\vendor\topthink\framework\src\think\Console.php(251): think\Console->doRun(Object(think\console\Input), Object(think\console\Output))
+#17 D:\www\bingher\http-crontab\think(10): think\Console->run()
+#18 {main}

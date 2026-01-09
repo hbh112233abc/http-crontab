@@ -8,7 +8,7 @@ class Service extends \think\Service
     public function register()
     {
         $this->commands([
-            Crontab::class,
+            'crontab' => Crontab::class,
         ]);
     }
 }

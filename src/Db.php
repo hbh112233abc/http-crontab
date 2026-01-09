@@ -326,6 +326,7 @@ class Db
     private function taskLockReset()
     {
         return $this->db->table($this->taskLockTable)
+            ->where('is_lock', '=', YesNoConstant::YES)
             ->update(['is_lock' => YesNoConstant::NO, 'update_time' => time()]);
     }
 

@@ -1,7 +1,7 @@
 <?php
 namespace bingher\crontab\command;
 
-use bingher\crontab\Crontab as CrontabServer;
+use bingher\crontab\CrontabServer;
 use think\console\Command;
 use think\console\Input;
 use think\console\input\Argument;
@@ -36,12 +36,20 @@ class Crontab extends Command
 
         // 根据 enable_http 配置决定是否启用 HTTP 服务
         $socketName = $enableHttp ? $config['base_uri'] : '';
-        $server     = new CrontabServer($socketName, $config['context'], $enableHttp);
-
-        $config['debug'] && $server->setDebug();
-        $server->setName($config['name'])
-            ->setUser($config['user'])
-            ->setSafeKey($config['safe_key'])
-            ->run();
+        try {
+            $server = new CrontabServer($socketName, $config['context'], $enableHttp);
+            if ($config['debug'] ?? false) {
+                $server->setDebug($config['debug'] ?? false);
+                $server->setLogFile();
+                $server->setStdoutFile();
+            }
+            $server->setName($config['name'])
+                ->setUser($config['user'])
+                ->setSafeKey($config['safe_key'])
+                ->run();
+        } catch (\Throwable $th) {
+            $output->error($th->getMessage());
+            $output->writeln($th->getTraceAsString());
+        }
     }
 }

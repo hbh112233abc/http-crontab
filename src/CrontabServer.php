@@ -3,6 +3,7 @@ namespace bingher\crontab;
 
 use bingher\crontab\http\HttpHandler;
 use bingher\crontab\http\HttpServer;
+use think\facade\Log;
 use Workerman\Connection\TcpConnection;
 use Workerman\Crontab\Crontab;
 use Workerman\Timer;
@@ -39,13 +40,13 @@ class CrontabServer
      * 任务进程池
      * @var array<int, array{id: int, shell: string, frequency: string, remark: string, create_time: string, crontab: Crontab}>
      */
-    private $crontabPool = [];
+    public $crontabPool = [];
 
     /**
      * 调试模式
      * @var bool
      */
-    private $debug = false;
+    public $debug = false;
 
     /**
      * 错误信息列表
@@ -58,18 +59,6 @@ class CrontabServer
      * @var string|null
      */
     private $safeKey;
-
-    /**
-     * HTTP 处理器
-     * @var HttpHandler|null
-     */
-    private $httpHandler;
-
-    /**
-     * HTTP 控制器
-     * @var HttpServer|null
-     */
-    private $httpServer;
 
     /**
      * 是否启用 HTTP 服务
@@ -105,19 +94,21 @@ class CrontabServer
      * 默认日志文件路径
      * @var string
      */
-    const DEFAULT_LOG_FILE = runtime_path() . "/crontab.log";
+    const DEFAULT_LOG_FILE = "crontab.log";
 
     /**
      * 默认标准输出文件路径
      * @var string
      */
-    const DEFAULT_STDOUT_FILE = runtime_path() . "/crontab_debug.log";
+    const DEFAULT_STDOUT_FILE = "crontab_debug.log";
 
     /**
      * 定时任务检查间隔 (秒)
      * @var int
      */
     const CRONTAB_CHECK_INTERVAL = 1;
+
+    protected $runtimePath = '';
 
     /**
      * 构造函数
@@ -130,11 +121,16 @@ class CrontabServer
      * @param bool $enableHttp 是否启用 HTTP 服务，默认为 true
      *                          设置为 false 时仅运行 Crontab 定时任务，不提供 HTTP 接口
      */
-    public function __construct($socketName = '', array $contextOption = [], $enableHttp = true)
+    public function __construct($socketName = '', array $contextOption = [], bool $enableHttp = true)
     {
         $this->checkEnv();
         $this->enableHttp = $enableHttp;
         $this->initWorker($socketName, $contextOption);
+        $this->runtimePath = runtime_path('crontab');
+        if (! is_dir($this->runtimePath)) {
+            mkdir($this->runtimePath, 0777, true);
+        }
+
     }
 
     /**
@@ -224,16 +220,6 @@ class CrontabServer
         $this->worker->onWorkerStart  = [$this, 'onWorkerStart'];
         $this->worker->onWorkerReload = [$this, 'onWorkerReload'];
         $this->worker->onWorkerStop   = [$this, 'onWorkerStop'];
-
-        // 仅在启用 HTTP 服务时注册网络相关回调
-        if ($this->enableHttp) {
-            $this->worker->onConnect     = [$this, 'onConnect'];
-            $this->worker->onMessage     = [$this, 'onMessage'];
-            $this->worker->onClose       = [$this, 'onClose'];
-            $this->worker->onBufferFull  = [$this, 'onBufferFull'];
-            $this->worker->onBufferDrain = [$this, 'onBufferDrain'];
-            $this->worker->onError       = [$this, 'onError'];
-        }
     }
 
     /**
@@ -241,16 +227,16 @@ class CrontabServer
      */
     private function initHttpComponents()
     {
-        $this->httpServer = new HttpServer(
+        $httpServer = new HttpServer(
             $this->db,
             $this->crontabPool,
-            [$this, 'crontabDestroy'],
-            [$this, 'crontabRun'],
-            $this->debug,
-            $this->safeKey
+            $this->crontabDestroy(...),
+            $this->crontabRun(...),
+            ['debug' => $this->debug, 'safeKey' => $this->safeKey],
+            $this->log(...)
         );
 
-        $this->httpHandler = new HttpHandler($this->httpServer);
+        new HttpHandler($httpServer, $this->worker);
     }
 
     /**
@@ -271,11 +257,13 @@ class CrontabServer
     /**
      * 启用调试模式
      *
+     * @param bool $flag 是否启用调试模式，默认启用
+     *
      * @return $this
      */
-    public function setDebug()
+    public function setDebug(bool $flag = true)
     {
-        $this->debug = true;
+        $this->debug = $flag;
 
         return $this;
     }
@@ -356,6 +344,15 @@ class CrontabServer
         return $this;
     }
 
+    public function log($msg, $level = 'info', $context = [])
+    {
+        if (! $this->debug) {
+            $this->writeln($msg);
+        }
+        // 写入ThinkPHP日志
+        Log::$level($msg, $context);
+    }
+
     /**
      * 指定日志文件路径
      *
@@ -367,7 +364,20 @@ class CrontabServer
      */
     public function setLogFile($path = self::DEFAULT_LOG_FILE)
     {
+        // 使用配置文件中的数据库路径作为参考，构建日志目录
+        if ($path == self::DEFAULT_LOG_FILE) {
+            $path = $this->runtimePath . $path;
+        }
         Worker::$logFile = $path;
+        // 确保日志目录存在
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0777, true);
+        }
+        // 确保日志文件可写
+        if (! file_exists($path)) {
+            touch($path);
+        }
+        chmod($path, 0666);
 
         return $this;
     }
@@ -385,11 +395,23 @@ class CrontabServer
      */
     public function setStdoutFile($path = self::DEFAULT_STDOUT_FILE)
     {
+        // 使用配置文件中的数据库路径作为参考，构建日志目录
+        if ($path == self::DEFAULT_STDOUT_FILE) {
+            $path = $this->runtimePath . $path;
+        }
         Worker::$stdoutFile = $path;
+        // 确保输出目录存在
+        if (! is_dir(dirname($path))) {
+            mkdir(dirname($path), 0777, true);
+        }
+        // 确保输出文件可写
+        if (! file_exists($path)) {
+            touch($path);
+        }
+        chmod($path, 0666);
 
         return $this;
     }
-
     /**
      * Worker 子进程启动回调
      *
@@ -436,90 +458,6 @@ class CrontabServer
     }
 
     /**
-     * 客户端连接建立回调
-     *
-     * 当客户端与 Workerman 建立连接时(TCP 三次握手完成后)触发
-     * 每个连接只会触发一次 onConnect 回调
-     * 此时客户端还没有发来任何数据
-     * 由于 UDP 是无连接的，所以当使用 UDP 时不会触发 onConnect 回调，也不会触发 onClose 回调
-     *
-     * @param TcpConnection $connection TCP 连接实例
-     */
-    public function onConnect($connection)
-    {
-        $this->httpHandler->onConnect($connection);
-    }
-
-    /**
-     * 客户端连接断开回调
-     *
-     * 当客户端连接与 Workerman 断开时触发
-     * 不管连接是如何断开的，只要断开就会触发 onClose
-     * 每个连接只会触发一次 onClose
-     * 由于 UDP 是无连接的，所以当使用 UDP 时不会触发 onConnect 回调，也不会触发 onClose 回调
-     *
-     * @param TcpConnection $connection TCP 连接实例
-     */
-    public function onClose($connection)
-    {
-        $this->httpHandler->onClose($connection);
-    }
-
-    /**
-     * 收到客户端消息回调
-     *
-     * 当客户端通过连接发来数据时(Workerman 收到数据时)触发
-     *
-     * @param TcpConnection $connection TCP 连接实例
-     * @param mixed $request HTTP 请求对象
-     */
-    public function onMessage($connection, $request)
-    {
-        $this->httpHandler->onMessage($connection, $request);
-    }
-
-    /**
-     * 发送缓冲区满回调
-     *
-     * 每个连接都有一个单独的应用层发送缓冲区，如果客户端接收速度小于服务端发送速度，数据会在应用层缓冲区暂存
-     * 只要发送缓冲区还没满，哪怕只有一个字节的空间，调用 Connection::send($A) 肯定会把 $A 放入发送缓冲区
-     * 但是如果已经没有空间了，还继续 Connection::send($B) 数据，则这次 send 的 $B 数据不会放入发送缓冲区，
-     * 而是被丢弃掉，并触发 onError 回调
-     *
-     * @param TcpConnection $connection TCP 连接实例
-     */
-    public function onBufferFull($connection)
-    {
-        $this->httpHandler->onBufferFull($connection);
-    }
-
-    /**
-     * 发送缓冲区数据发送完毕回调
-     *
-     * 在应用层发送缓冲区数据全部发送完毕后触发
-     *
-     * @param TcpConnection $connection TCP 连接实例
-     */
-    public function onBufferDrain($connection)
-    {
-        $this->httpHandler->onBufferDrain($connection);
-    }
-
-    /**
-     * 连接错误回调
-     *
-     * 客户端的连接上发生错误时触发
-     *
-     * @param TcpConnection $connection TCP 连接实例
-     * @param int $code 错误码
-     * @param string $msg 错误信息
-     */
-    public function onError($connection, $code, $msg)
-    {
-        $this->httpHandler->onError($connection, $code, $msg);
-    }
-
-    /**
      * 初始化定时任务
      *
      * 从数据库加载所有启用的定时任务并启动
@@ -545,7 +483,7 @@ class CrontabServer
      * @param int $id 任务 ID
      * @return void
      */
-    private function crontabDestroy($id)
+    public function crontabDestroy($id)
     {
         if (isset($this->crontabPool[$id])) {
             $this->crontabPool[$id]['crontab']->destroy();
@@ -569,7 +507,7 @@ class CrontabServer
      * @param int $id 任务 ID
      * @return void
      */
-    private function crontabRun($id)
+    public function crontabRun($id)
     {
         $task = $this->db->getTask($id);
 

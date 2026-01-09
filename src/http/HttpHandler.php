@@ -4,6 +4,7 @@ namespace bingher\crontab\http;
 use bingher\crontab\exception\HttpException;
 use Workerman\Connection\TcpConnection;
 use Workerman\Protocols\Http\Request;
+use Workerman\Worker;
 
 /**
  * HTTP 处理器类
@@ -21,13 +22,27 @@ class HttpHandler
     private $controller;
 
     /**
+     * Worker服务
+     * @var Worker
+     */
+    private $worker;
+
+    /**
      * 构造函数
      *
      * @param HttpServer $controller HTTP 控制器实例
      */
-    public function __construct(HttpServer $controller)
+    public function __construct(HttpServer $controller, Worker &$worker)
     {
         $this->controller = $controller;
+        $this->worker     = $worker;
+
+        $this->worker->onConnect     = [$this, 'onConnect'];
+        $this->worker->onMessage     = [$this, 'onMessage'];
+        $this->worker->onClose       = [$this, 'onClose'];
+        $this->worker->onBufferFull  = [$this, 'onBufferFull'];
+        $this->worker->onBufferDrain = [$this, 'onBufferDrain'];
+        $this->worker->onError       = [$this, 'onError'];
     }
 
     /**
@@ -62,16 +77,44 @@ class HttpHandler
     public function onMessage($connection, $request)
     {
         if ($request instanceof Request) {
-            // 安全密钥验证
-            if (! $this->controller->verifySafeKey($request)) {
-                $connection->send($this->controller->response('', 'Connection Not Allowed', 403));
-            } else {
-                try {
-                    $routeInfo = $this->controller->dispatch($request->method(), $request->path());
-                    $connection->send($this->controller->response(call_user_func($routeInfo[1], $request)));
-                } catch (HttpException $e) {
-                    $connection->send($this->controller->response('', $e->getMessage(), $e->getStatusCode()));
+            // 调试信息
+            $this->controller->log("Request path: " . $request->path() . ", method: " . $request->method());
+
+            try {
+                $routeInfo = $this->controller->dispatch($request->method(), $request->path());
+
+                // 检查是否为根路由，根路由不需要验证安全密钥
+                $isRootPath = $request->path() === '/';
+
+                $this->controller->log("Is root path: " . ($isRootPath ? 'YES' : 'NO'));
+
+                // 如果不是根路由，进行安全密钥验证
+                if (! $isRootPath && ! $this->controller->verifySafeKey($request)) {
+                    $this->controller->log("Safe key verification failed for path: " . $request->path());
+                    $connection->send($this->controller->response('', 'Connection Not Allowed', 403));
+                    return;
                 }
+
+                // 执行路由处理
+                $result = call_user_func($routeInfo[1], $request);
+
+                $this->controller->log("Route handler executed, result type: " . gettype($result));
+
+                // 如果返回的是 Response 对象，直接发送
+                if ($result instanceof \Workerman\Protocols\Http\Response) {
+                    $this->controller->log("Sending Response object directly");
+                    $connection->send($result);
+                } else {
+                    // 否则包装为 JSON 响应
+                    $this->controller->log("Wrapping in JSON response");
+                    $connection->send($this->controller->response($result));
+                }
+            } catch (HttpException $e) {
+                $this->controller->log("HttpException: " . $e->getMessage());
+                $connection->send($this->controller->response('', $e->getMessage(), $e->getStatusCode()));
+            } catch (\Throwable $e) {
+                $this->controller->log("Exception: " . $e->getMessage());
+                $connection->send($this->controller->response('', $e->getMessage(), 500));
             }
         }
     }

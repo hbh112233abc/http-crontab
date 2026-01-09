@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTTP Crontab 任务管理</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* 登录界面 */
+        .login-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            z-index: 1000;
+        }
+
+        .login-box {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            width: 400px;
+            max-width: 90%;
+        }
+
+        .login-box h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .error-msg {
+            color: #dc3545;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        /* 主界面 */
+        .main-container {
+            display: none;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table thead {
+            background: #f8f9fa;
+        }
+
+        table th,
+        table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        table th {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-enabled {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-disabled {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .type-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+            align-items: center;
+        }
+
+        .pagination button {
+            padding: 8px 16px;
+            border: 1px solid #dee2e6;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .pagination button:hover {
+            background: #f8f9fa;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination .page-info {
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        /* 模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            width: 600px;
+            max-width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #333;
+            font-size: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .modal-footer .btn {
+            width: auto;
+        }
+
+        /* 日志查看器 */
+        .log-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+
+        .log-viewer {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* 提示信息 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 500;
+            z-index: 3000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success {
+            background: #28a745;
+        }
+
+        .toast.error {
+            background: #dc3545;
+        }
+
+        .toast.info {
+            background: #17a2b8;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 10px;
+                text-align: center;
+            }
+
+            .table-container {
+                overflow-x: auto;
+            }
+
+            table {
+                min-width: 800px;
+            }
+
+            .toolbar {
+                flex-direction: column;
+            }
+
+            .search-box {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 登录界面 -->
+    <div class="login-container" id="loginContainer">
+        <div class="login-box">
+            <h1>🔐 HTTP Crontab</h1>
+            <div class="form-group">
+                <label for="safeKey">安全密钥</label>
+                <input type="password" id="safeKey" placeholder="请输入安全密钥" />
+            </div>
+            <button class="btn btn-primary" onclick="login()">登录</button>
+            <div class="error-msg" id="loginError"></div>
+        </div>
+    </div>
+
+    <!-- 主界面 -->
+    <div class="main-container" id="mainContainer">
+        <div class="container">
+            <div class="header">
+                <h1>⏰ 定时任务管理</h1>
+                <button class="btn btn-danger btn-small" onclick="logout()">退出登录</button>
+            </div>
+
+            <div class="table-container">
+                <div class="toolbar">
+                    <button class="btn btn-success" onclick="openAddModal()">+ 新增任务</button>
+                    <button class="btn btn-info" onclick="openLogModal()">📄 查看日志</button>
+                    <button class="btn btn-primary" onclick="openPoolModal()">🔄 任务池</button>
+                    <div class="form-group search-box" style="margin-bottom: 0;">
+                        <input type="text" id="searchInput" placeholder="搜索任务..." onkeyup="searchTasks(event)" />
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>标题</th>
+                            <th>类型</th>
+                            <th>频率</th>
+                            <th>运行次数</th>
+                            <th>状态</th>
+                            <th>排序</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="taskList"></tbody>
+                </table>
+
+                <div class="pagination">
+                    <button id="prevBtn" onclick="changePage(-1)">上一页</button>
+                    <span class="page-info" id="pageInfo"></span>
+                    <button id="nextBtn" onclick="changePage(1)">下一页</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 新增/编辑任务模态框 -->
+    <div class="modal" id="taskModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="taskModalTitle">新增任务</h2>
+                <button class="modal-close" onclick="closeModal('taskModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="taskId" />
+                <div class="form-group">
+                    <label for="taskTitle">标题 *</label>
+                    <input type="text" id="taskTitle" placeholder="请输入任务标题" />
+                </div>
+                <div class="form-group">
+                    <label for="taskType">类型 *</label>
+                    <select id="taskType">
+                        <option value="0">请求 URL</option>
+                        <option value="1">执行 SQL</option>
+                        <option value="2">执行 Shell</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="taskFrequency">频率 *</label>
+                    <input type="text" id="taskFrequency" placeholder="例如: * * * * * (分 时 日 月 周)" />
+                    <small style="color: #6c757d;">Cron 表达式: [秒(0-59)] 分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-6)</small>
+                </div>
+                <div class="form-group">
+                    <label for="taskShell">脚本内容 *</label>
+                    <textarea id="taskShell" placeholder="请输入要执行的脚本或命令"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="taskRemark">备注</label>
+                    <input type="text" id="taskRemark" placeholder="请输入任务备注" />
+                </div>
+                <div class="form-group">
+                    <label for="taskSort">排序</label>
+                    <input type="number" id="taskSort" value="0" />
+                    <small style="color: #6c757d;">数值越大越靠前</small>
+                </div>
+                <div class="form-group">
+                    <label for="taskStatus">状态</label>
+                    <select id="taskStatus">
+                        <option value="1">启用</option>
+                        <option value="0">禁用</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" onclick="closeModal('taskModal')">取消</button>
+                <button class="btn btn-primary" onclick="saveTask()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日志查看模态框 -->
+    <div class="modal" id="logModal">
+        <div class="modal-content" style="width: 800px;">
+            <div class="modal-header">
+                <h2>执行日志</h2>
+                <button class="modal-close" onclick="closeModal('logModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="logTaskId">选择任务</label>
+                    <select id="logTaskId" onchange="loadLogs()">
+                        <option value="">全部任务</option>
+                    </select>
+                </div>
+                <div class="log-container">
+                    <div class="log-viewer" id="logViewer"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="loadLogs()">刷新</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 任务池模态框 -->
+    <div class="modal" id="poolModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>任务池信息</h2>
+                <button class="modal-close" onclick="closeModal('poolModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="log-viewer" id="poolViewer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局配置
+        const API_BASE = window.location.origin;
+        let safeKey = localStorage.getItem('crontab_safe_key') || '';
+        let currentPage = 1;
+        const pageSize = 15;
+        let totalCount = 0;
+        let searchKeyword = '';
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            if (safeKey) {
+                verifySafeKey();
+            }
+        });
+
+        // 登录
+        function login() {
+            safeKey = document.getElementById('safeKey').value.trim();
+            if (!safeKey) {
+                showLoginError('请输入安全密钥');
+                return;
+            }
+            verifySafeKey();
+        }
+
+        // 验证密钥
+        function verifySafeKey() {
+            fetch(`${API_BASE}/crontab/ping`, {
+                headers: { 'key': safeKey }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200 && data.data === 'pong') {
+                    localStorage.setItem('crontab_safe_key', safeKey);
+                    document.getElementById('loginContainer').style.display = 'none';
+                    document.getElementById('mainContainer').style.display = 'block';
+                    loadTasks();
+                    loadTaskOptions();
+                } else {
+                    showLoginError('密钥验证失败');
+                }
+            })
+            .catch(() => {
+                showLoginError('连接失败,请检查服务是否启动');
+            });
+        }
+
+        // 显示登录错误
+        function showLoginError(msg) {
+            document.getElementById('loginError').textContent = msg;
+        }
+
+        // 退出登录
+        function logout() {
+            localStorage.removeItem('crontab_safe_key');
+            safeKey = '';
+            document.getElementById('loginContainer').style.display = 'flex';
+            document.getElementById('mainContainer').style.display = 'none';
+            document.getElementById('safeKey').value = '';
+            document.getElementById('loginError').textContent = '';
+        }
+
+        // 获取请求头
+        function getHeaders() {
+            return { 'Content-Type': 'application/json', 'key': safeKey };
+        }
+
+        // 加载任务列表
+        function loadTasks() {
+            const params = new URLSearchParams({
+                page: currentPage,
+                limit: pageSize
+            });
+
+            if (searchKeyword) {
+                params.set('filter', JSON.stringify({ title: searchKeyword }));
+                params.set('op', JSON.stringify({ title: '%*%' }));
+            }
+
+            fetch(`${API_BASE}/crontab/index?${params}`, {
+                headers: getHeaders()
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    renderTaskList(data.data.list);
+                    totalCount = data.data.count;
+                    updatePagination();
+                } else {
+                    showToast(data.msg, 'error');
+                }
+            })
+            .catch(err => showToast('加载任务列表失败', 'error'));
+        }
+
+        // 渲染任务列表
+        function renderTaskList(tasks) {
+            const tbody = document.getElementById('taskList');
+            if (tasks.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #999;">暂无数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = tasks.map(task => `
+                <tr>
+                    <td>${task.id}</td>
+                    <td>${escapeHtml(task.title)}</td>
+                    <td><span class="type-badge">${getTypeLabel(task.type)}</span></td>
+                    <td>${escapeHtml(task.frequency)}</td>
+                    <td>${task.running_times}</td>
+                    <td>
+                        <span class="status-badge ${task.status === 1 ? 'status-enabled' : 'status-disabled'}">
+                            ${task.status === 1 ? '启用' : '禁用'}
+                        </span>
+                    </td>
+                    <td>${task.sort}</td>
+                    <td>
+                        <button class="btn btn-small btn-success" onclick="editTask(${task.id})">编辑</button>
+                        <button class="btn btn-small btn-warning" onclick="toggleStatus(${task.id}, ${task.status})">
+                            ${task.status === 1 ? '禁用' : '启用'}
+                        </button>
+                        <button class="btn btn-small btn-info" onclick="reloadTask(${task.id})">重启</button>
+                        <button class="btn btn-small btn-danger" onclick="deleteTask(${task.id})">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 获取类型标签
+        function getTypeLabel(type) {
+            const types = { '0': 'URL', '1': 'SQL', '2': 'Shell' };
+            return types[type] || '未知';
+        }
+
+        // 搜索任务
+        function searchTasks(event) {
+            if (event.key === 'Enter') {
+                searchKeyword = document.getElementById('searchInput').value.trim();
+                currentPage = 1;
+                loadTasks();
+            }
+        }
+
+        // 分页
+        function updatePagination() {
+            const totalPages = Math.ceil(totalCount / pageSize);
+            document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages || 1} (共 ${totalCount} 条)`;
+            document.getElementById('prevBtn').disabled = currentPage <= 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        function changePage(delta) {
+            currentPage += delta;
+            if (currentPage < 1) currentPage = 1;
+            loadTasks();
+        }
+
+        // 打开新增模态框
+        function openAddModal() {
+            document.getElementById('taskModalTitle').textContent = '新增任务';
+            document.getElementById('taskId').value = '';
+            document.getElementById('taskTitle').value = '';
+            document.getElementById('taskType').value = '0';
+            document.getElementById('taskFrequency').value = '';
+            document.getElementById('taskShell').value = '';
+            document.getElementById('taskRemark').value = '';
+            document.getElementById('taskSort').value = '0';
+            document.getElementById('taskStatus').value = '1';
+            document.getElementById('taskModal').classList.add('active');
+        }
+
+        // 编辑任务
+        function editTask(id) {
+            fetch(`${API_BASE}/crontab/read?id=${id}`, {
+                headers: getHeaders()
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200 && data.data) {
+                    const task = data.data;
+                    document.getElementById('taskModalTitle').textContent = '编辑任务';
+                    document.getElementById('taskId').value = task.id;
+                    document.getElementById('taskTitle').value = task.title;
+                    document.getElementById('taskType').value = task.type;
+                    document.getElementById('taskFrequency').value = task.frequency;
+                    document.getElementById('taskShell').value = task.shell;
+                    document.getElementById('taskRemark').value = task.remark;
+                    document.getElementById('taskSort').value = task.sort;
+                    document.getElementById('taskStatus').value = task.status;
+                    document.getElementById('taskModal').classList.add('active');
+                } else {
+                    showToast(data.msg || '获取任务信息失败', 'error');
+                }
+            })
+            .catch(() => showToast('获取任务信息失败', 'error'));
+        }
+
+        // 保存任务
+        function saveTask() {
+            const id = document.getElementById('taskId').value;
+            const data = {
+                title: document.getElementById('taskTitle').value.trim(),
+                type: parseInt(document.getElementById('taskType').value),
+                frequency: document.getElementById('taskFrequency').value.trim(),
+                shell: document.getElementById('taskShell').value.trim(),
+                remark: document.getElementById('taskRemark').value.trim(),
+                sort: parseInt(document.getElementById('taskSort').value) || 0,
+                status: parseInt(document.getElementById('taskStatus').value)
+            };
+
+            if (!data.title || !data.frequency || !data.shell) {
+                showToast('请填写必填字段', 'error');
+                return;
+            }
+
+            const url = id ? `/crontab/edit?id=${id}` : '/crontab/add';
+            const method = id ? 'PUT' : 'POST';
+
+            // 使用 form data 方式
+            const formData = new URLSearchParams();
+            for (const key in data) {
+                formData.append(key, data[key]);
+            }
+
+            fetch(`${API_BASE}${url}`, {
+                method: 'POST',
+                headers: { 'key': safeKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    showToast(id ? '更新成功' : '添加成功', 'success');
+                    closeModal('taskModal');
+                    loadTasks();
+                } else {
+                    showToast(data.msg || '操作失败', 'error');
+                }
+            })
+            .catch(() => showToast('操作失败', 'error'));
+        }
+
+        // 切换状态
+        function toggleStatus(id, currentStatus) {
+            const newStatus = currentStatus === 1 ? 0 : 1;
+            const formData = new URLSearchParams();
+            formData.append('id', id);
+            formData.append('field', 'status');
+            formData.append('value', newStatus);
+
+            fetch(`${API_BASE}/crontab/modify`, {
+                method: 'POST',
+                headers: { 'key': safeKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    showToast(newStatus === 1 ? '已启用' : '已禁用', 'success');
+                    loadTasks();
+                } else {
+                    showToast(data.msg || '操作失败', 'error');
+                }
+            })
+            .catch(() => showToast('操作失败', 'error'));
+        }
+
+        // 重启任务
+        function reloadTask(id) {
+            if (!confirm('确定要重启此任务吗?')) return;
+
+            const formData = new URLSearchParams();
+            formData.append('id', id);
+
+            fetch(`${API_BASE}/crontab/reload`, {
+                method: 'POST',
+                headers: { 'key': safeKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    showToast('重启成功', 'success');
+                } else {
+                    showToast(data.msg || '操作失败', 'error');
+                }
+            })
+            .catch(() => showToast('操作失败', 'error'));
+        }
+
+        // 删除任务
+        function deleteTask(id) {
+            if (!confirm('确定要删除此任务吗?')) return;
+
+            const formData = new URLSearchParams();
+            formData.append('id', id);
+
+            fetch(`${API_BASE}/crontab/delete`, {
+                method: 'POST',
+                headers: { 'key': safeKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    showToast('删除成功', 'success');
+                    loadTasks();
+                } else {
+                    showToast(data.msg || '删除失败', 'error');
+                }
+            })
+            .catch(() => showToast('删除失败', 'error'));
+        }
+
+        // 加载任务选项(用于日志筛选)
+        function loadTaskOptions() {
+            fetch(`${API_BASE}/crontab/index?page=1&limit=1000`, {
+                headers: getHeaders()
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const select = document.getElementById('logTaskId');
+                    select.innerHTML = '<option value="">全部任务</option>';
+                    data.data.list.forEach(task => {
+                        select.innerHTML += `<option value="${task.id}">${task.id} - ${escapeHtml(task.title)}</option>`;
+                    });
+                }
+            })
+            .catch(() => {});
+        }
+
+        // 打开日志模态框
+        function openLogModal() {
+            document.getElementById('logModal').classList.add('active');
+            loadLogs();
+        }
+
+        // 加载日志
+        function loadLogs() {
+            const taskId = document.getElementById('logTaskId').value;
+            const month = new Date().toISOString().slice(0, 7);
+            const params = new URLSearchParams({
+                page: 1,
+                limit: 50,
+                filter: JSON.stringify({ month: month }),
+                op: JSON.stringify({ month: '=' })
+            });
+            if (taskId) {
+                params.set('sid', taskId);
+            }
+
+            fetch(`${API_BASE}/crontab/flow?${params}`, {
+                headers: getHeaders()
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    renderLogs(data.data.list);
+                } else {
+                    document.getElementById('logViewer').textContent = data.msg || '暂无日志';
+                }
+            })
+            .catch(() => {
+                document.getElementById('logViewer').textContent = '加载日志失败';
+            });
+        }
+
+        // 渲染日志
+        function renderLogs(logs) {
+            const viewer = document.getElementById('logViewer');
+            if (logs.length === 0) {
+                viewer.textContent = '暂无日志';
+                return;
+            }
+
+            viewer.innerHTML = logs.map(log => {
+                const time = new Date(log.create_time * 1000).toLocaleString('zh-CN');
+                const status = log.return_var === 0 ? '✅ 成功' : '❌ 失败';
+                return `[${time}] 任务ID: ${log.sid} | ${status} | 耗时: ${log.running_time}s
+命令: ${escapeHtml(log.command)}
+输出: ${escapeHtml(log.output || '无')}
+${'─'.repeat(80)}`;
+            }).join('\n\n');
+        }
+
+        // 打开任务池模态框
+        function openPoolModal() {
+            fetch(`${API_BASE}/crontab/pool`, {
+                headers: getHeaders()
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    document.getElementById('poolViewer').textContent = JSON.stringify(data.data, null, 2);
+                } else {
+                    document.getElementById('poolViewer').textContent = data.msg || '暂无数据';
+                }
+                document.getElementById('poolModal').classList.add('active');
+            })
+            .catch(() => {
+                document.getElementById('poolViewer').textContent = '加载失败';
+                document.getElementById('poolModal').classList.add('active');
+            });
+        }
+
+        // 关闭模态框
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        // 显示提示
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 点击模态框外部关闭
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+
+        // 回车登录
+        document.getElementById('safeKey').addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') login();
+        });
+    </script>
+</body>
+</html>
