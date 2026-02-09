@@ -38,9 +38,9 @@ class Crontab extends Command
         $socketName = $enableHttp ? $config['base_uri'] : '';
         try {
             $server = new CrontabServer($socketName, $config['context'], $enableHttp);
+            $server->setLogFile();
             if ($config['debug'] ?? false) {
                 $server->setDebug($config['debug'] ?? false);
-                $server->setLogFile();
                 $server->setStdoutFile();
             }
             $server->setName($config['name'])
