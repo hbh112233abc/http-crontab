@@ -432,6 +432,9 @@ class CrontabServer
         $this->crontabInit();
         // 定时检查日志分表
         Timer::add(self::CRONTAB_CHECK_INTERVAL, [$this->db, 'checkTaskLogTable']);
+
+        // 自动注入日志清理任务
+        $this->registerLogCleanTask();
     }
 
     /**
@@ -568,6 +571,26 @@ class CrontabServer
     private function writeln($msg, $ok = true)
     {
         echo '[' . date('Y-m-d H:i:s') . '] ' . $msg . ($ok ? " [Ok] " : " [Fail] ") . PHP_EOL;
+    }
+
+    /**
+     * 注册日志清理任务
+     *
+     * 在服务启动时自动注册一个定期任务，用于清理过期日志
+     * @return void
+     */
+    private function registerLogCleanTask()
+    {
+        $logRetentionDays = config('crontab.log_retention_days', 0);
+        if ($logRetentionDays > 0) {
+            // 每天凌晨2点执行日志清理
+            new Crontab('0 0 2 * * *', function () use ($logRetentionDays) {
+                $this->debug && $this->writeln("开始清理 {$logRetentionDays} 天前的日志");
+                $result = $this->db->cleanExpiredLogs($logRetentionDays);
+                $this->debug && $this->writeln("清理完成，删除记录数: {$result['deleted_count']}");
+                $this->log("日志清理任务执行完成，删除记录数: {$result['deleted_count']}，删除表: " . implode(',', $result['deleted_tables']), 'info');
+            });
+        }
     }
 
     /**

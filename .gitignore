@@ -1,8 +1,9 @@
-/.idea
-/.vscode
-/vendor
+.idea/
+.vscode/
+vendor/
 composer.lock
 test.php
-/config
+config/
 .phpunit*
 think
+runtime/

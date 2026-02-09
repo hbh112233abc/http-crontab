@@ -104,6 +104,8 @@ return [
         // 开启字段缓存
         'fields_cache' => true,
     ],
+    // 日志保留期限(天), 0 表示不自动清理
+    'log_retention_days' => env('crontab.log_retention_days', 30),
 ];
 ```
 
@@ -131,6 +133,12 @@ return [
 | database.prefix | string | '' | 数据库表前缀 |
 | database.trigger_sql | bool | `env('app_debug', false)` | 是否监听并输出 SQL 语句，用于调试 |
 | database.fields_cache | bool | true | 是否开启字段缓存，开启后可提升性能 |
+
+#### 日志清理配置
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|-------|------|--------|------|
+| log_retention_days | int | `env('crontab.log_retention_days', 30)` | 日志保留期限（天），设置为 0 表示不自动清理过期日志。启用后会自动注册一个每天凌晨 2:00 执行的定时任务来清理过期日志。|
 
 ### 配置示例
 
@@ -241,10 +249,38 @@ return [
         'trigger_sql'  => false,  // 关闭SQL监听
         'fields_cache' => true,   // 开启字段缓存
     ],
+    'log_retention_days' => env('crontab.log_retention_days', 30),  // 保留30天日志
 ];
 ```
 
-**说明**: 生产环境可根据需要设置 `CRONTAB_ENABLE_HTTP=true` 启用管理页面，或设置为 `false` 仅运行定时任务。启用后访问 `http://0.0.0.0:2345` 即可打开管理页面。
+**说明**: 生产环境可根据需要设置 `CRONTAB_ENABLE_HTTP=true` 启用管理页面，或设置为 `false` 仅运行定时任务。启用后访问 `http://0.0.0.0:2345` 即可打开管理页面。默认会保留最近 30 天的日志，并自动在每天凌晨 2:00 清理过期日志。
+
+#### 7. 配置日志自动清理
+
+通过配置 `log_retention_days` 参数控制日志保留期限：
+
+```php
+return [
+    // ... 其他配置
+
+    // 保留 7 天的日志
+    'log_retention_days' => 7,
+
+    // 或者使用环境变量
+    'log_retention_days' => env('crontab.log_retention_days', 7),
+];
+```
+
+在 `.env` 文件中设置：
+```env
+CRONTAB_LOG_RETENTION_DAYS=7
+```
+
+**工作原理**:
+- 当 `log_retention_days > 0` 时，系统会在启动时自动注册一个定时任务
+- 该任务在**每天凌晨 2:00** 执行
+- 自动删除超过保留期限的日志表和日志记录
+- 设置为 `0` 时禁用自动清理功能
 
 ### 安全说明
 
@@ -264,6 +300,7 @@ return [
 5. **端口占用**：确保 `base_uri` 指定的端口未被其他程序占用
 6. **时间粒度**：定时器开始、暂停、重启 都是在下一分钟开始执行
 7. **HTTP 服务**：设置 `enable_http => true` 时才会启动 HTTP 接口服务；设置为 `false` 时仅运行定时任务，不提供接口管理功能
+8. **日志自动清理**：配置 `log_retention_days` > 0 时，系统会在每天凌晨 2:00 自动清理过期日志；设置为 0 则禁用该功能。清理操作包括删除整个过期的月分表，以及删除表内过期的日志记录。
 
 
 ## 数据库操作
@@ -615,6 +652,33 @@ $db->checkTaskTables();
 $db->checkTaskLogTable();
 ```
 
+#### 5. 清理过期日志
+
+清理指定天数之前的日志数据和日志表。这是系统日志自动清理功能的核心方法。
+
+```php
+// 清理 30 天前的日志
+$days = 30;
+$result = $db->cleanExpiredLogs($days);
+
+// 返回结果
+// [
+//     'deleted_tables' => ['crontab_task_log_202501', 'crontab_task_log_202502'],  // 删除的表列表
+//     'deleted_count' => 1500,  // 删除的记录数量
+// ]
+```
+
+**说明**:
+- 当 `$days <= 0` 时，方法会立即返回空结果，不执行任何清理操作
+- 系统会遍历所有日志表（格式: `crontab_task_log_YYYYMM`）
+- 如果整个月的数据都过期，则直接删除整张表
+- 如果表未过期，则只删除表中 `create_time` 字段小于 `$days * 86400` 秒的记录
+- 返回值包含两个数组：`deleted_tables`（删除的表名列表）和 `deleted_count`（删除的记录总数）
+
+**使用场景**:
+- 通常由系统自动调用（通过 `log_retention_days` 配置）
+- 也可以手动调用来执行一次性清理操作
+
 ### 完整使用示例
 
 ```php
@@ -710,7 +774,9 @@ $db->deleteTask($taskId);
    - `updateTask`、`deleteTask`、`updateTaskLock` 返回影响的行数
    - `getTask`、`getTaskLock` 返回记录数组或 null
    - `getTaskList`、`getTaskLogList` 返回 `['list' => [], 'count' => 0]` 结构
+   - `cleanExpiredLogs` 返回 `['deleted_tables' => [], 'deleted_count' => 0]` 结构
 5. **排序字段**：`sort` 值越大，任务越优先执行
+6. **日志自动清理**：通过配置 `log_retention_days` 参数，系统会在每天凌晨 2:00 自动调用 `cleanExpiredLogs()` 方法清理过期日志
 
 ## 任务操作
 

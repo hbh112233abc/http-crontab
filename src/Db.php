@@ -496,4 +496,50 @@ SQL;
 
         return $this->db->execute($sql);
     }
+
+    /**
+     * 清理过期的日志数据
+     *
+     * @param int $days 保留天数
+     * @return array{deleted_tables: list<string>, deleted_count: int}
+     */
+    public function cleanExpiredLogs($days)
+    {
+        if ($days <= 0) {
+            return ['deleted_tables' => [], 'deleted_count' => 0];
+        }
+
+        $expireTime = time() - ($days * 86400); // 转换为秒
+        $deletedCount = 0;
+        $deletedTables = [];
+
+        // 获取所有日志表
+        $allTables = $this->getDbTables();
+        $logTables = array_filter($allTables, function ($table) {
+            return strpos($table, $this->taskLogTable . '_') === 0;
+        });
+
+        foreach ($logTables as $table) {
+            // 解析表名中的日期 (格式: crontab_task_log_202601)
+            $dateStr = substr($table, strlen($this->taskLogTable) + 1);
+            if (preg_match('/^\d{6}$/', $dateStr)) {
+                $tableTime = strtotime($dateStr . '01');
+                // 删除整个过期的月表
+                if ($tableTime < $expireTime) {
+                    $this->db->execute("DROP TABLE IF EXISTS `{$table}`");
+                    $deletedTables[] = $table;
+                } else {
+                    // 删除表内过期的日志记录
+                    $deletedCount += $this->db->table($table)
+                        ->where('create_time', '<', $expireTime)
+                        ->delete();
+                }
+            }
+        }
+
+        return [
+            'deleted_tables' => $deletedTables,
+            'deleted_count' => $deletedCount,
+        ];
+    }
 }
