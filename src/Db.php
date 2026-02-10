@@ -426,8 +426,14 @@ class Db
      */
     public function getDbTables()
     {
-        $result = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-        return array_column($result, 'name');
+        $result = $this->db->getTables();
+        $tables = [];
+        foreach ($result as $item) {
+            if (str_starts_with($item, 'crontab_task')) {
+                $tables[] = $item;
+            }
+        }
+        return $tables;
     }
 
     /**
@@ -438,8 +444,8 @@ class Db
      */
     public function isTableExist($tableName)
     {
-        $result = $this->db->query("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [$tableName]);
-        return ! empty($result);
+        $tables = $this->getDbTables();
+        return in_array($tableName, $tables);
     }
 
     /**

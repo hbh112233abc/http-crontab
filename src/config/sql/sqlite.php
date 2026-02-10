@@ -1,2 +1,2 @@
 <?php
-include __DIR__ . 'mysql.php';
+return include __DIR__ . '/mysql.php';

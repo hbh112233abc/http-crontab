@@ -71,6 +71,21 @@ Options:
 
 ## 配置
 
+### 数据库支持
+
+本项目支持多种数据库类型，可根据项目需求选择合适的数据库：
+
+| 数据库类型 | 说明                           | 推荐场景                 |
+| ---------- | ------------------------------ | ------------------------ |
+| sqlite     | 轻量级文件数据库，无需额外安装 | 开发环境、小型项目       |
+| mysql      | 开源关系数据库                 | 生产环境、中小型项目     |
+| pgsql      | PostgreSQL 开源关系数据库      | 生产环境、高并发项目     |
+| dm         | 达梦数据库                     | 国产化适配、政府企业项目 |
+| gauss      | 高斯数据库                     | 国产化适配、企业级项目   |
+| opengauss  | openGauss 开源关系数据库       | 国产化适配、开源项目     |
+
+**注意**: 不同数据库的 SQL 语法略有差异，系统会根据配置的 `database.type` 自动加载对应的建表 SQL。
+
 配置文件位于 `config/crontab.php`，默认配置如下：
 
 ```php
@@ -89,23 +104,30 @@ return [
     'base_uri' => env('cron.crontab_base_uri', 'http://127.0.0.1:2345'),
     // 安全秘钥
     'safe_key' => env('cron.crontab_safe_key', 'Q85gb1ncuWDsZTVoAEvymrNHhaRtp73M'),
-    // 数据库配置
-    'database' => [
-        // 数据库类型
-        'type'         => 'sqlite',
-        // 数据库名
-        'database'     => __DIR__ . '/crontab.db',
-        // 数据库编码默认采用utf8mb4
-        'charset'      => 'utf8',
-        // 数据库表前缀
-        'prefix'       => '',
-        // 监听SQL
-        'trigger_sql'  => env('app_debug', false),
-        // 开启字段缓存
-        'fields_cache' => true,
-    ],
     // 日志保留期限(天), 0 表示不自动清理
     'log_retention_days' => env('crontab.log_retention_days', 30),
+    // 数据库配置(可选的,为空默认使用database.default)
+    // 'database'           => [
+    //     // 数据库类型
+    //     'type'         => 'sqlite',
+    //     // 数据库名
+    //     'database'     => __DIR__ . '/crontab.db',
+    //     // 数据库编码默认采用utf8mb4
+    //     'charset'      => 'utf8',
+    //     // 数据库表前缀
+    //     'prefix'       => '',
+    //     // 监听SQL
+    //     'trigger_sql'  => env('app_debug', false),
+    //     // 开启字段缓存
+    //     'fields_cache' => true,
+    // ],
+    // 建表sql配置(可选的)
+    // 'sql' => [
+    //     'create_task' => 'task表创建sql',
+    //     'create_task_log' => 'task_log表创建sql',
+    //     'create_task_lock' => 'task_lock表创建sql',
+    //     'drop_table' => '删除表sql',
+    // ],
 ];
 ```
 
@@ -113,32 +135,32 @@ return [
 
 #### 基础配置
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|-------|------|--------|------|
-| name | string | 'Http Crontab Server' | 定时器服务名称 |
-| user | string | 'root' | Worker 进程运行用户（Linux 系统有效） |
-| debug | bool | false | 是否开启调试模式 |
-| enable_http | bool | `env('crontab.enable_http', false)` | 是否启用 HTTP 服务。true: 同时运行 Crontab 定时任务和 HTTP 接口服务；false: 仅运行 Crontab 定时任务，不提供 HTTP 接口。**启用后可访问前端管理页面** |
-| context | array | [] | Socket 上下文选项，支持 SSL 等配置 |
-| base_uri | string | `'http://127.0.0.1:2345'` | 服务监听地址。启用 HTTP 服务后，通过此地址访问管理页面 |
-| safe_key | string | 环境变量或默认值 | API 安全秘钥，用于接口访问验证 |
+| 配置项      | 类型   | 默认值                              | 说明                                                                                                                                                |
+| ----------- | ------ | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| name        | string | 'Http Crontab Server'               | 定时器服务名称                                                                                                                                      |
+| user        | string | 'root'                              | Worker 进程运行用户（Linux 系统有效）                                                                                                               |
+| debug       | bool   | false                               | 是否开启调试模式                                                                                                                                    |
+| enable_http | bool   | `env('crontab.enable_http', false)` | 是否启用 HTTP 服务。true: 同时运行 Crontab 定时任务和 HTTP 接口服务；false: 仅运行 Crontab 定时任务，不提供 HTTP 接口。**启用后可访问前端管理页面** |
+| context     | array  | []                                  | Socket 上下文选项，支持 SSL 等配置                                                                                                                  |
+| base_uri    | string | `'http://127.0.0.1:2345'`           | 服务监听地址。启用 HTTP 服务后，通过此地址访问管理页面                                                                                              |
+| safe_key    | string | 环境变量或默认值                    | API 安全秘钥，用于接口访问验证                                                                                                                      |
 
 #### 数据库配置
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|-------|------|--------|------|
-| database.type | string | 'sqlite' | 数据库类型，目前仅支持 sqlite |
-| database.database | string | `__DIR__ . '/crontab.db'` | SQLite 数据库文件路径 |
-| database.charset | string | 'utf8' | 数据库字符集 |
-| database.prefix | string | '' | 数据库表前缀 |
-| database.trigger_sql | bool | `env('app_debug', false)` | 是否监听并输出 SQL 语句，用于调试 |
-| database.fields_cache | bool | true | 是否开启字段缓存，开启后可提升性能 |
+| 配置项                | 类型   | 默认值                    | 说明                                                                                      |
+| --------------------- | ------ | ------------------------- | ----------------------------------------------------------------------------------------- |
+| database.type         | string | 'sqlite'                  | 数据库类型，支持：sqlite、mysql、pgsql、dm（达梦）、gauss（高斯）、opengauss（openGauss） |
+| database.database     | string | `__DIR__ . '/crontab.db'` | SQLite 数据库文件路径（SQLite）或数据库名（其他数据库）                                   |
+| database.charset      | string | 'utf8'                    | 数据库字符集                                                                              |
+| database.prefix       | string | ''                        | 数据库表前缀                                                                              |
+| database.trigger_sql  | bool   | `env('app_debug', false)` | 是否监听并输出 SQL 语句，用于调试                                                         |
+| database.fields_cache | bool   | true                      | 是否开启字段缓存，开启后可提升性能                                                        |
 
 #### 日志清理配置
 
-| 配置项 | 类型 | 默认值 | 说明 |
-|-------|------|--------|------|
-| log_retention_days | int | `env('crontab.log_retention_days', 30)` | 日志保留期限（天），设置为 0 表示不自动清理过期日志。启用后会自动注册一个每天凌晨 2:00 执行的定时任务来清理过期日志。|
+| 配置项             | 类型 | 默认值                                  | 说明                                                                                                                  |
+| ------------------ | ---- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| log_retention_days | int  | `env('crontab.log_retention_days', 30)` | 日志保留期限（天），设置为 0 表示不自动清理过期日志。启用后会自动注册一个每天凌晨 2:00 执行的定时任务来清理过期日志。 |
 
 ### 配置示例
 
@@ -197,22 +219,10 @@ return [
 
 **访问管理页面**: 启用 HTTP 服务后，访问 `.env` 中配置的 `CRON_CRONTAB_BASE_URI` 地址即可打开定时任务前端管理页面。
 
-#### 4. 自定义数据库路径
-
-```php
-return [
-    'enable_http' => false,  // 禁用 HTTP 接口，仅运行定时任务，不提供管理页面
-    'database' => [
-        'type'     => 'sqlite',
-        'database' => runtime_path() . 'crontab/crontab.db',  // 使用 runtime 目录
-        // ...其他配置
-    ],
-];
-```
 
 **说明**: 设置 `enable_http => false` 时，仅运行定时任务，不提供 HTTP 接口和前端管理页面访问。
 
-#### 5. 开发环境完整配置
+#### 4. 开发环境完整配置
 
 ```php
 return [
@@ -232,7 +242,9 @@ return [
 
 **访问管理页面**: 启动服务后，访问 `http://127.0.0.1:8080` 即可打开前端管理页面进行定时任务管理。
 
-#### 6. 生产环境优化配置
+#### 5. 生产环境优化配置
+
+##### 5.1 使用 SQLite（默认）
 
 ```php
 return [
@@ -250,6 +262,31 @@ return [
         'fields_cache' => true,   // 开启字段缓存
     ],
     'log_retention_days' => env('crontab.log_retention_days', 30),  // 保留30天日志
+];
+```
+
+##### 5.2 使用 MySQL
+
+```php
+return [
+    'name'        => 'Production Crontab Server',
+    'user'        => 'www-data',
+    'debug'       => false,
+    'enable_http' => env('crontab.enable_http', false),
+    'base_uri'    => 'http://0.0.0.0:2345',
+    'safe_key'    => env('cron.crontab_safe_key', ''),
+    'database' => [
+        'type'         => 'mysql',
+        'hostname'     => env('crontab.db_host', '127.0.0.1'),
+        'database'     => env('crontab.db_name', 'crontab'),
+        'username'     => env('crontab.db_user', 'root'),
+        'password'     => env('crontab.db_pass', ''),
+        'hostport'     => env('crontab.db_port', '3306'),
+        'charset'      => 'utf8mb4',
+        'trigger_sql'  => false,
+        'fields_cache' => true,
+    ],
+    'log_retention_days' => env('crontab.log_retention_days', 30),
 ];
 ```
 
@@ -328,43 +365,43 @@ $db = new Db([
 
 #### crontab_task - 任务表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | INTEGER | 任务ID（主键） |
-| title | TEXT | 任务标题 |
-| type | INTEGER | 任务类型（0:请求URL, 1:执行SQL, 2:执行Shell） |
-| frequency | TEXT | 任务频率（cron表达式） |
-| shell | TEXT | 任务脚本 |
-| running_times | INTEGER | 已运行次数 |
-| last_running_time | INTEGER | 最近运行时间 |
-| remark | TEXT | 任务备注 |
-| sort | INTEGER | 排序，越大越前 |
-| status | INTEGER | 任务状态（0:禁用, 1:启用） |
-| create_time | INTEGER | 创建时间 |
-| update_time | INTEGER | 更新时间 |
+| 字段              | 类型    | 说明                                          |
+| ----------------- | ------- | --------------------------------------------- |
+| id                | INTEGER | 任务ID（主键）                                |
+| title             | TEXT    | 任务标题                                      |
+| type              | INTEGER | 任务类型（0:请求URL, 1:执行SQL, 2:执行Shell） |
+| frequency         | TEXT    | 任务频率（cron表达式）                        |
+| shell             | TEXT    | 任务脚本                                      |
+| running_times     | INTEGER | 已运行次数                                    |
+| last_running_time | INTEGER | 最近运行时间                                  |
+| remark            | TEXT    | 任务备注                                      |
+| sort              | INTEGER | 排序，越大越前                                |
+| status            | INTEGER | 任务状态（0:禁用, 1:启用）                    |
+| create_time       | INTEGER | 创建时间                                      |
+| update_time       | INTEGER | 更新时间                                      |
 
 #### crontab_task_log_{YYYYMM} - 执行日志表（按月分表）
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | INTEGER | ID（主键） |
-| sid | INTEGER | 任务ID |
-| command | TEXT | 执行命令 |
-| output | TEXT | 执行输出 |
-| return_var | INTEGER | 执行返回状态（0:成功, 1:失败） |
-| running_time | TEXT | 执行所用时间（秒） |
-| create_time | INTEGER | 创建时间 |
-| update_time | INTEGER | 更新时间 |
+| 字段         | 类型    | 说明                           |
+| ------------ | ------- | ------------------------------ |
+| id           | INTEGER | ID（主键）                     |
+| sid          | INTEGER | 任务ID                         |
+| command      | TEXT    | 执行命令                       |
+| output       | TEXT    | 执行输出                       |
+| return_var   | INTEGER | 执行返回状态（0:成功, 1:失败） |
+| running_time | TEXT    | 执行所用时间（秒）             |
+| create_time  | INTEGER | 创建时间                       |
+| update_time  | INTEGER | 更新时间                       |
 
 #### crontab_task_lock - 任务锁表
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| id | INTEGER | ID（主键） |
-| sid | INTEGER | 任务ID |
-| is_lock | INTEGER | 是否锁定（0:否, 1:是） |
-| create_time | INTEGER | 创建时间 |
-| update_time | INTEGER | 更新时间 |
+| 字段        | 类型    | 说明                   |
+| ----------- | ------- | ---------------------- |
+| id          | INTEGER | ID（主键）             |
+| sid         | INTEGER | 任务ID                 |
+| is_lock     | INTEGER | 是否锁定（0:否, 1:是） |
+| create_time | INTEGER | 创建时间               |
+| update_time | INTEGER | 更新时间               |
 
 ### 任务操作
 
