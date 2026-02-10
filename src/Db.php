@@ -91,6 +91,12 @@ class Db
     protected $db;
 
     /**
+     * 建表SQL
+     * @var array<string, string>
+     */
+    private $createTableSql = [];
+
+    /**
      * 构造函数
      *
      * @param array<string, mixed> $config 数据库配置（可选，覆盖默认配置）
@@ -98,6 +104,9 @@ class Db
     public function __construct($config = [])
     {
         $this->dbConfig = config('crontab.database');
+        if (empty($this->dbConfig)) {
+            $this->dbConfig = config('database.connections')[config('database.default')];
+        }
         if (! empty($config)) {
             $this->dbConfig = array_merge($this->dbConfig, $config);
         }
@@ -107,6 +116,12 @@ class Db
         $config['connections'] = array_merge(Config::get('database.connections'), $connections);
         Config::set($config, 'database');
         $this->db = ThinkDb::connect('crontab');
+
+        $this->createTableSql = config('crontab.sql');
+        if (empty($this->createTableSql)) {
+            $type                 = strtolower(basename($this->dbConfig['type']));
+            $this->createTableSql = require __DIR__ . '/config/sql/' . $type . '.php';
+        }
     }
     /**
      * 获取定时任务id
@@ -434,22 +449,7 @@ class Db
      */
     private function createTaskTable()
     {
-        $sql = <<<SQL
-CREATE TABLE IF NOT EXISTS `{$this->taskTable}` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT, -- 任务ID
-  `title` TEXT NOT NULL, -- 任务标题
-  `type` INTEGER NOT NULL DEFAULT 0, -- 任务类型[0请求url,1执行sql,2执行shell]
-  `frequency` TEXT NOT NULL, -- 任务频率
-  `shell` TEXT NOT NULL DEFAULT '', -- 任务脚本
-  `running_times` INTEGER NOT NULL DEFAULT 0, -- 已运行次数
-  `last_running_time` INTEGER NOT NULL DEFAULT 0, -- 最近运行时间
-  `remark` TEXT NOT NULL, -- 任务备注
-  `sort` INTEGER NOT NULL DEFAULT 0, -- 排序，越大越前
-  `status` INTEGER NOT NULL DEFAULT 0, -- 任务状态[0:禁用;1启用]
-  `create_time` INTEGER NOT NULL DEFAULT 0, -- 创建时间
-  `update_time` INTEGER NOT NULL DEFAULT 0 -- 更新时间
-)
-SQL;
+        $sql = sprintf($this->createTableSql['create_task'], $this->taskTable);
 
         return $this->db->execute($sql);
     }
@@ -461,19 +461,7 @@ SQL;
      */
     private function createTaskLogTable()
     {
-        $sql = <<<SQL
-CREATE TABLE IF NOT EXISTS `{$this->currentTaskLogTable}` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT, -- ID
-  `sid` INTEGER NOT NULL, -- 任务ID
-  `command` TEXT NOT NULL, -- 执行命令
-  `output` TEXT NOT NULL, -- 执行输出
-  `return_var` INTEGER NOT NULL, -- 执行返回状态[0成功; 1失败]
-  `running_time` TEXT NOT NULL, -- 执行所用时间
-  `create_time` INTEGER NOT NULL DEFAULT 0, -- 创建时间
-  `update_time` INTEGER NOT NULL DEFAULT 0 -- 更新时间
-)
-SQL;
-
+        $sql = sprintf($this->createTableSql['create_task_log'], $this->currentTaskLogTable);
         return $this->db->execute($sql);
     }
 
@@ -484,16 +472,7 @@ SQL;
      */
     private function createTaskLockTable()
     {
-        $sql = <<<SQL
-CREATE TABLE IF NOT EXISTS `{$this->taskLockTable}` (
-  `id` INTEGER PRIMARY KEY AUTOINCREMENT, -- ID
-  `sid` INTEGER NOT NULL, -- 任务ID
-  `is_lock` INTEGER NOT NULL DEFAULT 0, -- 是否锁定(0:否,1是)
-  `create_time` INTEGER NOT NULL DEFAULT 0, -- 创建时间
-  `update_time` INTEGER NOT NULL DEFAULT 0 -- 更新时间
-)
-SQL;
-
+        $sql = sprintf($this->createTableSql['create_task_lock'], $this->taskLockTable);
         return $this->db->execute($sql);
     }
 
@@ -509,8 +488,8 @@ SQL;
             return ['deleted_tables' => [], 'deleted_count' => 0];
         }
 
-        $expireTime = time() - ($days * 86400); // 转换为秒
-        $deletedCount = 0;
+        $expireTime    = time() - ($days * 86400); // 转换为秒
+        $deletedCount  = 0;
         $deletedTables = [];
 
         // 获取所有日志表
@@ -526,7 +505,7 @@ SQL;
                 $tableTime = strtotime($dateStr . '01');
                 // 删除整个过期的月表
                 if ($tableTime < $expireTime) {
-                    $this->db->execute("DROP TABLE IF EXISTS `{$table}`");
+                    $this->db->execute(sprintf($this->createTableSql['drop_table'], $table));
                     $deletedTables[] = $table;
                 } else {
                     // 删除表内过期的日志记录
@@ -539,7 +518,7 @@ SQL;
 
         return [
             'deleted_tables' => $deletedTables,
-            'deleted_count' => $deletedCount,
+            'deleted_count'  => $deletedCount,
         ];
     }
 }
