@@ -2,6 +2,7 @@
 namespace bingher\crontab;
 
 use bingher\crontab\constant\YesNoConstant;
+use Exception;
 use think\facade\Config;
 use think\facade\Db as ThinkDb;
 
@@ -119,8 +120,12 @@ class Db
 
         $this->createTableSql = config('crontab.sql');
         if (empty($this->createTableSql)) {
-            $type                 = strtolower(basename($this->dbConfig['type']));
-            $this->createTableSql = require __DIR__ . '/config/sql/' . $type . '.php';
+            $type    = rtrim(strtolower(basename(str_replace('\\', '/', $this->dbConfig['type']))), '.php');
+            $sqlFile = __DIR__ . '/config/sql/' . $type . '.php';
+            if (! file_exists($sqlFile)) {
+                throw new Exception("数据库类型不支持");
+            }
+            $this->createTableSql = require $sqlFile;
         }
     }
     /**
